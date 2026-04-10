@@ -1,0 +1,5 @@
+{
+  "name": "DateFund",
+  "description": "Your editorial romance dashboard for shared savings and date planning.",
+  "requestFramePermissions": ["geolocation"]
+}

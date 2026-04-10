@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - displayName: string (optional) - User's display name
+    //   - email: string (required) - User's email
+    //   - photoURL: string (optional) - User's photo URL
+    //   - createdAt: string (optional) - ISO 8601 timestamp
+    //
+    // Collection: goals
+    // Document ID: {goalId}
+    // Fields:
+    //   - id: string (required)
+    //   - ownerUid: string (required) - UID of the user who created the goal
+    //   - name: string (required) - Goal name (1-100 chars)
+    //   - targetAmount: number (required) - Target amount (> 0)
+    //   - currentAmount: number (required) - Current saved amount
+    //   - deadline: string (required) - ISO 8601 date (YYYY-MM-DD)
+    //   - createdAt: string (required) - ISO 8601 timestamp
+    //
+    // Collection: transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - id: string (required)
+    //   - ownerUid: string (required)
+    //   - goalId: string (required)
+    //   - goalName: string (required)
+    //   - amount: number (required)
+    //   - date: string (required) - ISO 8601 date (YYYY-MM-DD)
+    //   - contributor: string (required) - "Me" or "Them"
+    //   - type: string (required) - "deposit" or "withdrawal"
+    //   - createdAt: string (required) - ISO 8601 timestamp
+    //
+    // Collection: events
+    // Document ID: {eventId}
+    // Fields:
+    //   - id: string (required)
+    //   - ownerUid: string (required)
+    //   - title: string (required)
+    //   - description: string (optional)
+    //   - date: string (required) - ISO 8601 date (YYYY-MM-DD)
+    //   - time: string (optional)
+    //   - location: string (optional)
+    //   - reminder: bool (optional)
+    //   - createdAt: string (required) - ISO 8601 timestamp
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDate(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is string && ts.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500));
+    }
+
+    function isValidGoal(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
+             data.ownerUid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.targetAmount is number && data.targetAmount > 0 &&
+             data.currentAmount is number &&
+             isValidDate(data.deadline) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'goalId', 'goalName', 'amount', 'date', 'contributor', 'type', 'createdAt']) &&
+             data.ownerUid == request.auth.uid &&
+             data.goalId is string &&
+             data.goalName is string &&
+             data.amount is number &&
+             isValidDate(data.date) &&
+             data.contributor in ['Me', 'Them'] &&
+             data.type in ['deposit', 'withdrawal'] &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidEvent(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'title', 'date', 'createdAt']) &&
+             data.ownerUid == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             isValidDate(data.date) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('time' in data) || (data.time is string)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 500)) &&
+             (!('reminder' in data) || (data.reminder is bool)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /goals/{goalId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidGoal(request.resource.data);
+      allow update: if isDocOwner() && isValidGoal(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
+      allow update: if isDocOwner() && isValidTransaction(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /events/{eventId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidEvent(request.resource.data);
+      allow update: if isDocOwner() && isValidEvent(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

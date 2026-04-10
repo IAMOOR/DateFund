@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "DM Serif Display", serif;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-headline: "Noto Serif", serif;
+
+  --color-background: #131313;
+  --color-surface: #131313;
+  --color-surface-container: #201f1f;
+  --color-surface-container-low: #1c1b1b;
+  --color-surface-container-high: #2a2a2a;
+  --color-surface-container-highest: #353534;
+  
+  --color-primary: #ffb1c4;
+  --color-primary-container: #e9638e;
+  --color-on-primary: #65002f;
+  --color-on-primary-container: #590028;
+  --color-on-primary-fixed: #3f001a;
+
+  --color-secondary: #68dbae;
+  --color-secondary-container: #26a37a;
+  --color-on-secondary: #003827;
+  --color-on-secondary-container: #003121;
+
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #dcbfc5;
+  --color-outline: #a48a8f;
+  --color-outline-variant: #564146;
+
+  --radius-2xl: 1.5rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-sans antialiased;
+  }
+}
+
+.progress-glow {
+  box-shadow: 0 0 15px rgba(255, 177, 196, 0.3);
+}
