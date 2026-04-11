@@ -53,7 +53,11 @@ import {
 } from './firebase';
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+  console.error("GEMINI_API_KEY is missing! Please set it in your environment variables.");
+}
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
 
 const AVATAR_ME = "https://lh3.googleusercontent.com/aida-public/AB6AXuCI9vqhcwkWHop2yys08rGQQzat2sxu6ZZ3ccAEl78y0LKuYkxl0rz8HC0zEFQzI66P1lWxRJK7p3w3hMX8kAgaXbDc6-lQdwO2632Ap8j_6uqVs7g49OXnVw66TwJyMrPxt3pNM38_HucD5mPSALugnsLnP1oPZQ_5IuIRAb7vUA21Px47ew9NdZDGBaSwvimDqCRNrR1sRpL01CjplTZXcfHvsTAbgMCx0BIbdwfRDTDvCgfQF8-1TwnwlPnAf8jsgoVTnmk23FE";
 const AVATAR_THEM = "https://lh3.googleusercontent.com/aida-public/AB6AXuAtSrWZ1IwuPWyeSCMCaLnRPy3BkUAKSiMvfJhcK9E5rJP3vovDVSODIg8sP4Q3rADR1gaNrhe9UaQ_fq10mqBujTlzOtTWG87Fjp-671jT35crUY5spPerfxObhMTtP5snzeDplyp5ipu1WEMDbPKY5LvyNyGpi50vqZozS-yyRrPWAEFBzxsvzB8RmfWhB32HTc59fVsigig_oA3WGXBjy8kbIbHtoszMYp8v5EGHeRMtOcujZIs-eXfLHtd_0oFxNPPFmGhziq8";
