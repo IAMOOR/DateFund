@@ -25,9 +25,17 @@ import {
   Bell,
   Clock,
   Plane,
-  Palette
+  Palette,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
+  Sparkles,
+  Wand2,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import CalendarComponent from './components/Calendar';
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   auth, 
   db, 
@@ -51,7 +59,6 @@ import {
   OperationType,
   User
 } from './firebase';
-import { GoogleGenAI } from "@google/genai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
@@ -95,7 +102,11 @@ interface Event {
   time?: string;
   location?: string;
   reminder?: boolean;
+  reminderMinutes?: number;
   reminderSent?: boolean;
+  tags?: string[];
+  collaborators: string[];
+  rsvps?: { [userId: string]: 'Going' | 'Maybe' | 'Not Going' };
   createdAt: string;
 }
 
@@ -113,11 +124,20 @@ export default function App() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
+  const [isJoinEventModalOpen, setIsJoinEventModalOpen] = useState(false);
+  const [plannerMode, setPlannerMode] = useState<'list' | 'calendar'>('calendar');
+  const [plannerSort, setPlannerSort] = useState<'date' | 'time' | 'title'>('date');
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [joinGoalId, setJoinGoalId] = useState('');
+  const [joinEventId, setJoinEventId] = useState('');
   const [newGoal, setNewGoal] = useState({ name: '', target: '', deadline: '' });
   const [fundData, setFundData] = useState({ goalId: '', amount: '', contributor: 'Me' as 'Me' | 'Them' });
-  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', time: '', location: '', reminder: false });
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] as string[] });
   const [profileData, setProfileData] = useState({ displayName: '', photoURL: '' });
+  const [customTag, setCustomTag] = useState('');
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestedIdea, setSuggestedIdea] = useState<{ title: string, description: string, tags: string[] } | null>(null);
+  const [isSuggestionModalOpen, setIsSuggestionModalOpen] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -219,8 +239,8 @@ export default function App() {
         if (!event.reminder || event.reminderSent) return false;
         
         const eventDateTime = new Date(`${event.date}T${event.time || '00:00'}`);
-        // Remind 15 minutes before or if it's already started but within 1 hour
-        const reminderTime = new Date(eventDateTime.getTime() - 15 * 60000);
+        // Remind at specified time before or if it's already started but within 1 hour
+        const reminderTime = new Date(eventDateTime.getTime() - (event.reminderMinutes || 15) * 60000);
         const expiryTime = new Date(eventDateTime.getTime() + 60 * 60000);
         
         return now >= reminderTime && now < expiryTime;
@@ -276,11 +296,12 @@ export default function App() {
     }
 
     // Migration: Ensure all owned goals have collaborators list
-    const fixOldGoals = async () => {
+    const fixOldData = async () => {
       try {
-        const q = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
-        const snap = await getDocs(q);
-        for (const docSnap of snap.docs) {
+        // Fix Goals
+        const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
+        const snapGoals = await getDocs(qGoals);
+        for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
             await setDoc(doc(db, 'goals', docSnap.id), {
@@ -289,12 +310,26 @@ export default function App() {
             }, { merge: true });
           }
         }
+
+        // Fix Events
+        const qEvents = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
+        const snapEvents = await getDocs(qEvents);
+        for (const docSnap of snapEvents.docs) {
+          const data = docSnap.data();
+          if (!data.collaborators) {
+            await setDoc(doc(db, 'events', docSnap.id), {
+              ...data,
+              collaborators: [user.uid],
+              rsvps: { [user.uid]: 'Going' }
+            }, { merge: true });
+          }
+        }
       } catch (err) {
         // Silent fail for migration
         console.debug("Migration check skipped or failed", err);
       }
     };
-    fixOldGoals();
+    fixOldData();
 
     const goalsQuery = query(collection(db, 'goals'), where('collaborators', 'array-contains', user.uid));
     const unsubscribeGoals = onSnapshot(goalsQuery, (snapshot) => {
@@ -308,7 +343,7 @@ export default function App() {
       setTransactions(transactionsList.sort((a, b) => b.date.localeCompare(a.date)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'transactions'));
 
-    const eventsQuery = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
+    const eventsQuery = query(collection(db, 'events'), where('collaborators', 'array-contains', user.uid));
     const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
       const eventsList = snapshot.docs.map(doc => ({ ...doc.data() } as Event));
       setEvents(eventsList.sort((a, b) => a.date.localeCompare(b.date)));
@@ -490,15 +525,32 @@ export default function App() {
       time: newEvent.time,
       location: newEvent.location,
       reminder: newEvent.reminder,
+      reminderMinutes: newEvent.reminderMinutes,
+      tags: newEvent.tags,
+      collaborators: [user.uid],
+      rsvps: { [user.uid]: 'Going' },
       createdAt: new Date().toISOString()
     };
 
     try {
       await setDoc(doc(db, 'events', eventId), event);
-      setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false });
+      setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
       setIsEventModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `events/${eventId}`);
+    }
+  };
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !editingEvent || !editingEvent.title || !editingEvent.date) return;
+
+    try {
+      await setDoc(doc(db, 'events', editingEvent.id), editingEvent);
+      setEditingEvent(null);
+      setIsEventModalOpen(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `events/${editingEvent.id}`);
     }
   };
 
@@ -564,6 +616,95 @@ export default function App() {
       setIsJoinGoalModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `goals/${joinGoalId}`);
+    }
+  };
+
+  const sortedEvents = useMemo(() => {
+    return [...events].sort((a, b) => {
+      if (plannerSort === 'date') {
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      }
+      if (plannerSort === 'time') {
+        const timeA = a.time || '00:00';
+        const timeB = b.time || '00:00';
+        return timeA.localeCompare(timeB);
+      }
+      if (plannerSort === 'title') {
+        return a.title.localeCompare(b.title);
+      }
+      return 0;
+    });
+  }, [events, plannerSort]);
+
+  const handleSuggestIdea = async () => {
+    if (!user) return;
+    setIsSuggesting(true);
+    try {
+      const goalsContext = goals.map(g => `${g.name} (Target: R ${g.targetAmount})`).join(', ');
+      const eventsContext = events.map(e => `${e.title} (${e.tags?.join(', ') || 'no tags'})`).join(', ');
+
+      const prompt = `Based on these financial goals: [${goalsContext}] and these past/planned events: [${eventsContext}], suggest ONE creative and romantic date idea. 
+      The idea should be realistic and align with the goals (e.g., if they are saving for a big trip, suggest a low-cost but high-romance local date; if they have a "Fine Dining" goal, suggest a fancy restaurant idea).
+      Return the response as a JSON object with 'title', 'description', and 'tags' (array of strings).`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              tags: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["title", "description", "tags"]
+          }
+        }
+      });
+
+      const idea = JSON.parse(response.text);
+      setSuggestedIdea(idea);
+      setIsSuggestionModalOpen(true);
+    } catch (err) {
+      console.error("Failed to get suggestion:", err);
+      setToast("AI is feeling shy right now. Try again later!");
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  const handleJoinEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !joinEventId) return;
+
+    try {
+      const eventRef = doc(db, 'events', joinEventId);
+      const eventSnap = await getDoc(eventRef);
+      
+      if (!eventSnap.exists()) {
+        setToast("Event not found. Check the ID.");
+        return;
+      }
+
+      const eventData = eventSnap.data() as Event;
+      if (eventData.collaborators.includes(user.uid)) {
+        setToast("You are already a collaborator!");
+        setIsJoinEventModalOpen(false);
+        return;
+      }
+
+      await setDoc(eventRef, {
+        collaborators: [...eventData.collaborators, user.uid],
+        rsvps: { ...eventData.rsvps, [user.uid]: 'Going' }
+      }, { merge: true });
+
+      setToast("Joined event successfully!");
+      setJoinEventId('');
+      setIsJoinEventModalOpen(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `events/${joinEventId}`);
     }
   };
 
@@ -762,6 +903,132 @@ export default function App() {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* AI Suggestion Modal */}
+      <AnimatePresence>
+        {isSuggestionModalOpen && suggestedIdea && (
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSuggestionModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: "100%", scale: 0.9 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: "100%", scale: 0.9 }}
+              className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-primary/20"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Wand2 className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-serif">AI Suggestion</h3>
+                </div>
+                <button onClick={() => setIsSuggestionModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10">
+                  <h4 className="text-2xl font-serif text-primary mb-2">{suggestedIdea.title}</h4>
+                  <p className="text-on-surface/80 text-sm leading-relaxed mb-4">{suggestedIdea.description}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedIdea.tags.map((tag, idx) => (
+                      <span key={idx} className="text-[10px] uppercase font-bold bg-primary/10 text-primary px-3 py-1 rounded-full">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setIsSuggestionModalOpen(false)}
+                    className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors"
+                  >
+                    Maybe Later
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setEditingEvent(null);
+                      setNewEvent({
+                        title: suggestedIdea.title,
+                        description: suggestedIdea.description,
+                        date: new Date().toISOString().split('T')[0],
+                        time: '19:00',
+                        location: '',
+                        reminder: true,
+                        reminderMinutes: 60,
+                        tags: suggestedIdea.tags
+                      });
+                      setIsSuggestionModalOpen(false);
+                      setIsEventModalOpen(true);
+                    }}
+                    className="flex-[2] bg-primary text-on-primary-fixed py-4 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Plan This Date
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Join Event Modal */}
+      <AnimatePresence>
+        {isJoinEventModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsJoinEventModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-serif">Join Shared Event</h3>
+                <button onClick={() => setIsJoinEventModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={handleJoinEvent} className="space-y-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Event ID</label>
+                  <input 
+                    autoFocus
+                    type="text" 
+                    placeholder="Paste event ID here..."
+                    className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-mono text-sm"
+                    value={joinEventId}
+                    onChange={e => setJoinEventId(e.target.value)}
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold active:scale-95 transition-transform"
+                >
+                  Join Event
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Toast Notification */}
       <AnimatePresence>
@@ -1005,70 +1272,171 @@ export default function App() {
                   <h2 className="text-3xl font-serif">Planner</h2>
                   <p className="text-outline text-sm">Schedule your next romantic escape.</p>
                 </div>
-                <button 
-                  onClick={() => setIsEventModalOpen(true)}
-                  className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-lg active:scale-90 transition-transform"
-                >
-                  <Plus className="w-6 h-6" />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setIsJoinEventModalOpen(true)}
+                    className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors"
+                    title="Join Shared Event"
+                  >
+                    <Share2 className="w-5 h-5" />
+                  </button>
+                  {plannerMode === 'list' && (
+                    <div className="bg-surface-container p-1 rounded-full flex gap-1">
+                      <button 
+                        onClick={() => setPlannerSort('date')}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${plannerSort === 'date' ? 'bg-primary text-on-primary-fixed shadow-md' : 'text-outline hover:bg-white/5'}`}
+                      >
+                        Date
+                      </button>
+                      <button 
+                        onClick={() => setPlannerSort('time')}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${plannerSort === 'time' ? 'bg-primary text-on-primary-fixed shadow-md' : 'text-outline hover:bg-white/5'}`}
+                      >
+                        Time
+                      </button>
+                      <button 
+                        onClick={() => setPlannerSort('title')}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${plannerSort === 'title' ? 'bg-primary text-on-primary-fixed shadow-md' : 'text-outline hover:bg-white/5'}`}
+                      >
+                        Title
+                      </button>
+                    </div>
+                  )}
+                  <div className="bg-surface-container p-1 rounded-full flex gap-1">
+                    <button 
+                      onClick={() => setPlannerMode('list')}
+                      className={`p-2 rounded-full transition-all ${plannerMode === 'list' ? 'bg-primary text-on-primary-fixed shadow-md' : 'text-outline hover:bg-white/5'}`}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setPlannerMode('calendar')}
+                      className={`p-2 rounded-full transition-all ${plannerMode === 'calendar' ? 'bg-primary text-on-primary-fixed shadow-md' : 'text-outline hover:bg-white/5'}`}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button 
+                    onClick={handleSuggestIdea}
+                    disabled={isSuggesting}
+                    className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors disabled:opacity-50"
+                    title="AI Suggest Idea"
+                  >
+                    {isSuggesting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setEditingEvent(null);
+                      setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
+                      setIsEventModalOpen(true);
+                    }}
+                    className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-lg active:scale-90 transition-transform"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-6">
-                {events.length > 0 ? (
-                  events.map((event) => (
-                    <div key={event.id} className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/10 relative group">
-                      <button 
-                        onClick={() => deleteEvent(event.id)}
-                        className="absolute top-4 right-4 p-2 text-outline hover:text-error transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <div className="flex gap-4">
-                        <div className="flex flex-col items-center justify-center bg-primary/10 rounded-xl px-4 py-2 h-fit">
-                          <span className="text-[10px] uppercase font-bold text-primary">
-                            {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
-                          </span>
-                          <span className="text-2xl font-serif text-primary">
-                            {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
-                          </span>
+                {plannerMode === 'calendar' ? (
+                  <CalendarComponent 
+                    events={events} 
+                    userId={user?.uid}
+                    onAddEvent={(date) => {
+                      setEditingEvent(null);
+                      setNewEvent({ title: '', description: '', date, time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
+                      setIsEventModalOpen(true);
+                    }}
+                    onEditEvent={(event) => {
+                      setEditingEvent(event);
+                      setIsEventModalOpen(true);
+                    }}
+                  />
+                ) : (
+                  sortedEvents.length > 0 ? (
+                    sortedEvents.map((event) => (
+                      <div key={event.id} className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/10 relative group">
+                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditingEvent(event);
+                              setIsEventModalOpen(true);
+                            }}
+                            className="p-2 text-outline hover:text-primary transition-colors"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => deleteEvent(event.id)}
+                            className="p-2 text-outline hover:text-error transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div className="space-y-2 flex-1">
-                          <h3 className="text-xl font-serif">{event.title}</h3>
-                          {event.description && <p className="text-on-surface/70 text-sm">{event.description}</p>}
-                          <div className="flex flex-wrap gap-4 pt-2">
-                            {event.time && (
-                              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
-                                <Clock className="w-3 h-3" /> {event.time}
+                        <div className="flex gap-4">
+                          <div className="flex flex-col items-center justify-center bg-primary/10 rounded-xl px-4 py-2 h-fit">
+                            <span className="text-[10px] uppercase font-bold text-primary">
+                              {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
+                            </span>
+                            <span className="text-2xl font-serif text-primary">
+                              {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
+                            </span>
+                          </div>
+                          <div className="space-y-2 flex-1">
+                            <h3 className="text-xl font-serif">{event.title}</h3>
+                            {event.tags && event.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {event.tags.map((tag, idx) => (
+                                  <span key={idx} className="text-[8px] uppercase tracking-tighter font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
+                                    {tag}
+                                  </span>
+                                ))}
                               </div>
                             )}
-                            {event.location && (
-                              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
-                                <MapPin className="w-3 h-3" /> {event.location}
-                              </div>
-                            )}
-                            {event.reminder && (
-                              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-secondary">
-                                <Bell className="w-3 h-3" /> Reminder Set
-                              </div>
-                            )}
+                            {event.description && <p className="text-on-surface/70 text-sm">{event.description}</p>}
+                            <div className="flex flex-wrap gap-4 pt-2">
+                              {user && event.rsvps && event.rsvps[user.uid] && (
+                                <div className={`flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold ${
+                                  event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
+                                  event.rsvps[user.uid] === 'Maybe' ? 'text-primary' : 'text-error'
+                                }`}>
+                                  RSVP: {event.rsvps[user.uid]}
+                                </div>
+                              )}
+                              {event.time && (
+                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
+                                  <Clock className="w-3 h-3" /> {event.time}
+                                </div>
+                              )}
+                              {event.location && (
+                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
+                                  <MapPin className="w-3 h-3" /> {event.location}
+                                </div>
+                              )}
+                              {event.reminder && (
+                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-secondary">
+                                  <Bell className="w-3 h-3" /> Reminder Set
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="py-20 text-center border-2 border-dashed border-outline-variant/20 rounded-3xl space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-surface-container mx-auto flex items-center justify-center">
+                        <Calendar className="w-8 h-8 text-outline/30" />
+                      </div>
+                      <p className="text-outline italic">No dates planned yet. Start dreaming together.</p>
+                      <button 
+                        onClick={() => setIsEventModalOpen(true)}
+                        className="text-primary font-bold uppercase tracking-widest text-xs"
+                      >
+                        Add First Event
+                      </button>
                     </div>
-                  ))
-                ) : (
-                  <div className="py-20 text-center border-2 border-dashed border-outline-variant/20 rounded-3xl space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-surface-container mx-auto flex items-center justify-center">
-                      <Calendar className="w-8 h-8 text-outline/30" />
-                    </div>
-                    <p className="text-outline italic">No dates planned yet. Start dreaming together.</p>
-                    <button 
-                      onClick={() => setIsEventModalOpen(true)}
-                      className="text-primary font-bold uppercase tracking-widest text-xs"
-                    >
-                      Add First Event
-                    </button>
-                  </div>
+                  )
                 )}
               </div>
             </motion.div>
@@ -1247,13 +1615,13 @@ export default function App() {
               className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-serif">Plan an Event</h3>
+                <h3 className="text-2xl font-serif">{editingEvent ? 'Edit Event' : 'Plan an Event'}</h3>
                 <button onClick={() => setIsEventModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               </div>
               
-              <form onSubmit={handleAddEvent} className="space-y-4">
+              <form onSubmit={editingEvent ? handleUpdateEvent : handleAddEvent} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Title</label>
                   <input 
@@ -1261,8 +1629,8 @@ export default function App() {
                     type="text" 
                     placeholder="e.g. Candlelit Dinner"
                     className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-serif text-xl"
-                    value={newEvent.title}
-                    onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                    value={editingEvent ? editingEvent.title : newEvent.title}
+                    onChange={e => editingEvent ? setEditingEvent({...editingEvent, title: e.target.value}) : setNewEvent({...newEvent, title: e.target.value})}
                   />
                 </div>
 
@@ -1271,8 +1639,8 @@ export default function App() {
                   <textarea 
                     placeholder="Details about the date..."
                     className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm resize-none h-20"
-                    value={newEvent.description}
-                    onChange={e => setNewEvent({...newEvent, description: e.target.value})}
+                    value={editingEvent ? editingEvent.description : newEvent.description}
+                    onChange={e => editingEvent ? setEditingEvent({...editingEvent, description: e.target.value}) : setNewEvent({...newEvent, description: e.target.value})}
                   />
                 </div>
                 
@@ -1282,8 +1650,8 @@ export default function App() {
                     <input 
                       type="date" 
                       className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm"
-                      value={newEvent.date}
-                      onChange={e => setNewEvent({...newEvent, date: e.target.value})}
+                      value={editingEvent ? editingEvent.date : newEvent.date}
+                      onChange={e => editingEvent ? setEditingEvent({...editingEvent, date: e.target.value}) : setNewEvent({...newEvent, date: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1">
@@ -1291,8 +1659,8 @@ export default function App() {
                     <input 
                       type="time" 
                       className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm"
-                      value={newEvent.time}
-                      onChange={e => setNewEvent({...newEvent, time: e.target.value})}
+                      value={editingEvent ? editingEvent.time : newEvent.time}
+                      onChange={e => editingEvent ? setEditingEvent({...editingEvent, time: e.target.value}) : setNewEvent({...newEvent, time: e.target.value})}
                     />
                   </div>
                 </div>
@@ -1303,28 +1671,204 @@ export default function App() {
                     type="text" 
                     placeholder="Where to?"
                     className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm"
-                    value={newEvent.location}
-                    onChange={e => setNewEvent({...newEvent, location: e.target.value})}
+                    value={editingEvent ? editingEvent.location : newEvent.location}
+                    onChange={e => editingEvent ? setEditingEvent({...editingEvent, location: e.target.value}) : setNewEvent({...newEvent, location: e.target.value})}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Tags</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {Array.from(new Set([
+                      'Date Night', 'Travel', 'Anniversary', 'Adventure', 'Relaxation',
+                      ...(editingEvent?.tags || []),
+                      ...(newEvent.tags || [])
+                    ])).map(tag => {
+                      const isSelected = editingEvent 
+                        ? (editingEvent.tags?.includes(tag)) 
+                        : (newEvent.tags.includes(tag));
+                      
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            if (editingEvent) {
+                              const currentTags = editingEvent.tags || [];
+                              const newTags = currentTags.includes(tag) 
+                                ? currentTags.filter(t => t !== tag) 
+                                : [...currentTags, tag];
+                              setEditingEvent({...editingEvent, tags: newTags});
+                            } else {
+                              const currentTags = newEvent.tags;
+                              const newTags = currentTags.includes(tag) 
+                                ? currentTags.filter(t => t !== tag) 
+                                : [...currentTags, tag];
+                              setNewEvent({...newEvent, tags: newTags});
+                            }
+                          }}
+                          className={`text-[10px] uppercase tracking-widest font-bold px-3 py-1.5 rounded-full border transition-all ${isSelected ? 'bg-primary text-on-primary-fixed border-primary' : 'bg-transparent text-outline border-outline-variant/30 hover:border-primary/50'}`}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Add custom tag..."
+                      className="flex-1 bg-transparent border-b border-outline-variant/30 py-1 focus:border-primary outline-none transition-colors font-sans text-xs"
+                      value={customTag}
+                      onChange={e => setCustomTag(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const tag = customTag.trim();
+                          if (tag) {
+                            if (editingEvent) {
+                              const currentTags = editingEvent.tags || [];
+                              if (!currentTags.includes(tag)) {
+                                setEditingEvent({...editingEvent, tags: [...currentTags, tag]});
+                              }
+                            } else {
+                              const currentTags = newEvent.tags;
+                              if (!currentTags.includes(tag)) {
+                                setNewEvent({...newEvent, tags: [...currentTags, tag]});
+                              }
+                            }
+                            setCustomTag('');
+                          }
+                        }
+                      }}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const tag = customTag.trim();
+                        if (tag) {
+                          if (editingEvent) {
+                            const currentTags = editingEvent.tags || [];
+                            if (!currentTags.includes(tag)) {
+                              setEditingEvent({...editingEvent, tags: [...currentTags, tag]});
+                            }
+                          } else {
+                            const currentTags = newEvent.tags;
+                            if (!currentTags.includes(tag)) {
+                              setNewEvent({...newEvent, tags: [...currentTags, tag]});
+                            }
+                          }
+                          setCustomTag('');
+                        }
+                      }}
+                      className="text-[10px] uppercase tracking-widest font-bold text-primary hover:text-primary/80 transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 pt-2">
                   <button 
                     type="button"
-                    onClick={() => setNewEvent({...newEvent, reminder: !newEvent.reminder})}
-                    className={`w-10 h-6 rounded-full transition-colors relative ${newEvent.reminder ? 'bg-primary' : 'bg-outline-variant/30'}`}
+                    onClick={() => editingEvent ? setEditingEvent({...editingEvent, reminder: !editingEvent.reminder}) : setNewEvent({...newEvent, reminder: !newEvent.reminder})}
+                    className={`w-10 h-6 rounded-full transition-colors relative ${editingEvent ? (editingEvent.reminder ? 'bg-primary' : 'bg-outline-variant/30') : (newEvent.reminder ? 'bg-primary' : 'bg-outline-variant/30')}`}
                   >
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${newEvent.reminder ? 'left-5' : 'left-1'}`} />
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${editingEvent ? (editingEvent.reminder ? 'left-5' : 'left-1') : (newEvent.reminder ? 'left-5' : 'left-1')}`} />
                   </button>
                   <span className="text-xs font-bold uppercase tracking-widest text-outline">Set Reminder</span>
                 </div>
 
-                <button 
-                  type="submit"
-                  className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold mt-4 active:scale-95 transition-transform"
-                >
-                  Schedule Event
-                </button>
+                {(editingEvent ? editingEvent.reminder : newEvent.reminder) && (
+                  <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Remind me</label>
+                    <div className="flex gap-2">
+                      {[
+                        { label: '15m', value: 15 },
+                        { label: '1h', value: 60 },
+                        { label: '1d', value: 1440 }
+                      ].map((opt) => {
+                        const isSelected = editingEvent 
+                          ? editingEvent.reminderMinutes === opt.value 
+                          : newEvent.reminderMinutes === opt.value;
+                        
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => editingEvent 
+                              ? setEditingEvent({...editingEvent, reminderMinutes: opt.value}) 
+                              : setNewEvent({...newEvent, reminderMinutes: opt.value})
+                            }
+                            className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                              isSelected 
+                                ? 'bg-primary text-on-primary-fixed border-primary' 
+                                : 'bg-transparent text-outline border-outline-variant/30 hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {editingEvent && user && (
+                  <div className="space-y-2 pt-4 border-t border-outline-variant/10">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Your RSVP</label>
+                    <div className="flex gap-2">
+                      {(['Going', 'Maybe', 'Not Going'] as const).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => {
+                            const newRsvps = { ...(editingEvent.rsvps || {}), [user.uid]: status };
+                            setEditingEvent({ ...editingEvent, rsvps: newRsvps });
+                          }}
+                          className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                            editingEvent.rsvps?.[user.uid] === status 
+                              ? 'bg-primary text-on-primary-fixed border-primary' 
+                              : 'bg-transparent text-outline border-outline-variant/30 hover:border-primary/50'
+                          }`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {editingEvent && (
+                  <div className="p-4 bg-surface-container-highest rounded-2xl space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-outline">Share Event ID</p>
+                    <code className="block w-full bg-black/20 p-2 rounded text-xs font-mono break-all select-all">
+                      {editingEvent.id}
+                    </code>
+                  </div>
+                )}
+
+                <div className="flex gap-4 mt-4">
+                  {editingEvent && (
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        deleteEvent(editingEvent.id);
+                        setIsEventModalOpen(false);
+                      }}
+                      className="flex-1 bg-error/10 text-error py-4 rounded-full font-bold active:scale-95 transition-transform"
+                    >
+                      Delete
+                    </button>
+                  )}
+                  <button 
+                    type="submit"
+                    className="flex-[2] bg-primary text-on-primary-fixed py-4 rounded-full font-bold active:scale-95 transition-transform"
+                  >
+                    {editingEvent ? 'Update Event' : 'Schedule Event'}
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
