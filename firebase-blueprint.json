@@ -20,6 +20,7 @@
       "properties": {
         "id": { "type": "string" },
         "ownerUid": { "type": "string", "description": "UID of the user who created the goal" },
+        "collaborators": { "type": "array", "items": { "type": "string" }, "description": "List of UIDs who can access the goal" },
         "name": { "type": "string" },
         "targetAmount": { "type": "number" },
         "currentAmount": { "type": "number" },
@@ -58,6 +59,11 @@
         "time": { "type": "string" },
         "location": { "type": "string" },
         "reminder": { "type": "boolean" },
+        "reminderMinutes": { "type": "number" },
+        "reminderSent": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "collaborators": { "type": "array", "items": { "type": "string" } },
+        "rsvps": { "type": "object", "additionalProperties": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "ownerUid", "title", "date"]

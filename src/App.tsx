@@ -31,7 +31,9 @@ import {
   ArrowUpDown,
   Sparkles,
   Wand2,
-  Loader2
+  Loader2,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarComponent from './components/Calendar';
@@ -45,6 +47,7 @@ import {
   onAuthStateChanged, 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   collection, 
   doc, 
   setDoc, 
@@ -123,6 +126,8 @@ export default function App() {
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
   const [isJoinEventModalOpen, setIsJoinEventModalOpen] = useState(false);
   const [plannerMode, setPlannerMode] = useState<'list' | 'calendar'>('calendar');
@@ -147,6 +152,7 @@ export default function App() {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [activeReminders, setActiveReminders] = useState<Event[]>([]);
 
@@ -173,6 +179,16 @@ export default function App() {
     if (score <= 4) return "Fair";
     return "Strong";
   };
+
+  // Theme Listener
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'light') {
+      root.classList.add('light');
+    } else {
+      root.classList.remove('light');
+    }
+  }, [theme]);
 
   // Auth Listener
   useEffect(() => {
@@ -384,11 +400,42 @@ export default function App() {
 
   const handleLogin = async () => {
     setAuthError('');
+    setIsAuthenticating(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
-      setAuthError("Google sign-in failed. Please try again.");
+      if (error.code !== 'auth/popup-closed-by-user') {
+        setAuthError("Google sign-in failed. Please try again.");
+      }
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setEmailError("Enter your email to reset password");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailError("Please enter a valid email address");
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setAuthError('');
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setToast("Password reset email sent! Check your inbox.");
+    } catch (error: any) {
+      console.error("Reset failed", error);
+      let message = "Failed to send reset email.";
+      if (error.code === 'auth/user-not-found') message = "No account found with this email.";
+      setAuthError(message);
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -763,6 +810,19 @@ export default function App() {
                 />
                 {passwordError && <p className="text-error text-[10px] font-bold uppercase tracking-widest mt-1">{passwordError}</p>}
                 
+                {authMode === 'signin' && (
+                  <div className="flex justify-end pt-1">
+                    <button 
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={isResettingPassword}
+                      className="text-[10px] uppercase tracking-widest font-bold text-primary hover:underline disabled:opacity-50"
+                    >
+                      {isResettingPassword ? 'Sending...' : 'Forgot Password?'}
+                    </button>
+                  </div>
+                )}
+
                 {authMode === 'signup' && password && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between items-center">
@@ -785,13 +845,15 @@ export default function App() {
                 </div>
               )}
 
-              <button 
-                type="submit"
-                disabled={isAuthenticating}
-                className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold mt-4 active:scale-95 transition-transform disabled:opacity-50"
-              >
-                {isAuthenticating ? 'Processing...' : (authMode === 'signin' ? 'Sign In' : 'Sign Up')}
-              </button>
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="submit"
+              disabled={isAuthenticating}
+              className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold mt-4 transition-all disabled:opacity-50"
+            >
+              {isAuthenticating ? 'Processing...' : (authMode === 'signin' ? 'Sign In' : 'Sign Up')}
+            </motion.button>
             </form>
 
             <div className="relative my-8">
@@ -803,18 +865,25 @@ export default function App() {
               </div>
             </div>
 
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={handleLogin}
               className="w-full bg-surface-container-high text-on-surface py-4 rounded-full font-bold flex items-center justify-center gap-3 hover:bg-surface-container-highest transition-colors border border-outline-variant/10"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
               Google
-            </button>
+            </motion.button>
 
             <p className="mt-8 text-center text-sm text-outline">
               {authMode === 'signin' ? "Don't have an account?" : "Already have an account?"}{' '}
               <button 
-                onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
+                onClick={() => {
+                  setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+                  setAuthError('');
+                  setEmailError('');
+                  setPasswordError('');
+                }}
                 className="text-primary font-bold hover:underline"
               >
                 {authMode === 'signin' ? 'Sign Up' : 'Sign In'}
@@ -831,8 +900,16 @@ export default function App() {
       {/* Top Navigation */}
       <nav className="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-md flex justify-between items-center px-6 h-16">
         <div className="flex items-center gap-4">
-          <Menu className="text-primary w-6 h-6 cursor-pointer" onClick={() => setToast("Menu coming soon!")} />
-          <h1 className="text-2xl font-serif text-primary cursor-pointer" onClick={() => setView('home')}>DateFund</h1>
+          <motion.div whileHover={{ scale: 1.1, rotate: 5 }} whileTap={{ scale: 0.9 }}>
+            <Menu className="text-primary w-6 h-6 cursor-pointer" onClick={() => setIsMenuOpen(true)} />
+          </motion.div>
+          <motion.h1 
+            whileHover={{ scale: 1.05 }}
+            className="text-2xl font-serif text-primary cursor-pointer" 
+            onClick={() => setView('home')}
+          >
+            DateFund
+          </motion.h1>
         </div>
         <div className="flex items-center gap-6">
           <div className="hidden md:flex items-center gap-8 text-on-surface/70 font-bold uppercase tracking-widest text-[10px]">
@@ -1066,7 +1143,8 @@ export default function App() {
               {goals.length > 0 && (
                 <motion.div 
                   layoutId={goals[0].id}
-                  className="relative overflow-hidden bg-surface-container rounded-2xl p-8 mb-10 group"
+                  whileHover={{ scale: 1.01 }}
+                  className="relative overflow-hidden bg-surface-container rounded-2xl p-8 mb-10 group shadow-lg hover:shadow-2xl transition-all duration-500 glass-highlight"
                 >
                   <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/10 rounded-full blur-3xl transition-transform group-hover:scale-150 duration-700"></div>
                   <div className="flex justify-between items-end mb-6 relative z-10">
@@ -1108,11 +1186,15 @@ export default function App() {
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {goals.slice(1).map((goal) => (
+                  {goals.slice(1).map((goal, idx) => (
                     <motion.div 
                       key={goal.id}
                       layoutId={goal.id}
-                      className="bg-surface-container-low rounded-2xl p-5 flex items-center justify-between group hover:bg-surface-container transition-colors"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.1 }}
+                      whileHover={{ scale: 1.02, x: 5 }}
+                      className="bg-surface-container-low rounded-2xl p-5 flex items-center justify-between group hover:bg-surface-container transition-all duration-300 border border-outline-variant/5 shadow-sm hover:shadow-md"
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -1169,15 +1251,19 @@ export default function App() {
 
               {/* Quick Actions */}
               <div className="space-y-4">
-                <button 
+                <motion.button 
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => setIsFundModalOpen(true)}
-                  className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed py-5 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-lg shadow-primary/10"
+                  className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed py-5 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/10 hover:shadow-primary/20"
                 >
                   <Plus className="w-5 h-5" />
                   Add Funds
-                </button>
+                </motion.button>
                 <div className="flex gap-4">
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       navigator.clipboard.writeText(window.location.href);
                       setToast("Link copied to clipboard!");
@@ -1186,21 +1272,25 @@ export default function App() {
                   >
                     <Share2 className="w-4 h-4" />
                     Invite
-                  </button>
-                  <button 
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => setIsJoinGoalModalOpen(true)}
                     className="flex-1 bg-surface-container-high text-on-surface py-4 rounded-full font-bold text-sm hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2"
                   >
                     <PiggyBank className="w-4 h-4" />
                     Join Goal
-                  </button>
-                  <button 
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => setIsGoalModalOpen(true)}
                     className="flex-1 bg-surface-container-high text-on-surface py-4 rounded-full font-bold text-sm hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2"
                   >
                     <Settings className="w-4 h-4" />
                     Manage
-                  </button>
+                  </motion.button>
                 </div>
               </div>
 
@@ -1211,7 +1301,7 @@ export default function App() {
                   <button onClick={() => setView('history')} className="text-secondary text-xs uppercase tracking-widest font-bold">View All</button>
                 </div>
                 <div className="space-y-6">
-                  {transactions.slice(0, 3).map((t) => (
+                  {transactions.slice(0, 3).map((t, idx) => (
                     <HistoryItem 
                       key={t.id}
                       avatar={t.contributor === 'Me' ? AVATAR_ME : AVATAR_THEM}
@@ -1242,7 +1332,7 @@ export default function App() {
               </div>
               
               <div className="space-y-6">
-                {transactions.map((t) => (
+                {transactions.map((t, idx) => (
                   <HistoryItem 
                     key={t.id}
                     avatar={t.contributor === 'Me' ? AVATAR_ME : AVATAR_THEM}
@@ -1316,24 +1406,28 @@ export default function App() {
                       <LayoutGrid className="w-4 h-4" />
                     </button>
                   </div>
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.1, rotate: 5 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={handleSuggestIdea}
                     disabled={isSuggesting}
                     className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors disabled:opacity-50"
                     title="AI Suggest Idea"
                   >
                     {isSuggesting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                  </button>
-                  <button 
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => {
                       setEditingEvent(null);
                       setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
                       setIsEventModalOpen(true);
                     }}
-                    className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-lg active:scale-90 transition-transform"
+                    className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-lg transition-all hover:shadow-primary/20"
                   >
                     <Plus className="w-6 h-6" />
-                  </button>
+                  </motion.button>
                 </div>
               </div>
 
@@ -1354,10 +1448,19 @@ export default function App() {
                   />
                 ) : (
                   sortedEvents.length > 0 ? (
-                    sortedEvents.map((event) => (
-                      <div key={event.id} className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/10 relative group">
+                    sortedEvents.map((event, idx) => (
+                      <motion.div 
+                        key={event.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: idx * 0.05 }}
+                        whileHover={{ scale: 1.01, y: -2 }}
+                        className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/10 relative group shadow-sm hover:shadow-md transition-all duration-300"
+                      >
                         <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
+                          <motion.button 
+                            whileHover={{ scale: 1.1, rotate: 15 }}
+                            whileTap={{ scale: 0.9 }}
                             onClick={() => {
                               setEditingEvent(event);
                               setIsEventModalOpen(true);
@@ -1365,13 +1468,15 @@ export default function App() {
                             className="p-2 text-outline hover:text-primary transition-colors"
                           >
                             <Settings className="w-4 h-4" />
-                          </button>
-                          <button 
+                          </motion.button>
+                          <motion.button 
+                            whileHover={{ scale: 1.1, rotate: -15 }}
+                            whileTap={{ scale: 0.9 }}
                             onClick={() => deleteEvent(event.id)}
                             className="p-2 text-outline hover:text-error transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                          </motion.button>
                         </div>
                         <div className="flex gap-4">
                           <div className="flex flex-col items-center justify-center bg-primary/10 rounded-xl px-4 py-2 h-fit">
@@ -1421,7 +1526,7 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     ))
                   ) : (
                     <div className="py-20 text-center border-2 border-dashed border-outline-variant/20 rounded-3xl space-y-4">
@@ -1443,6 +1548,107 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Side Menu */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <div className="fixed inset-0 z-[150] flex">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="relative w-full max-w-[280px] bg-surface-container h-full shadow-2xl border-r border-outline-variant/10 p-6 flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-10">
+                <h3 className="text-2xl font-serif text-primary">Menu</h3>
+                <button onClick={() => setIsMenuOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex flex-col items-center mb-10 p-6 bg-surface-container-low rounded-3xl border border-outline-variant/10">
+                <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-primary/20 mb-4">
+                  <img 
+                    className="w-full h-full object-cover" 
+                    src={profileData.photoURL || user?.photoURL || AVATAR_NAV} 
+                    alt="Profile" 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <p className="font-serif text-lg text-center truncate w-full">{profileData.displayName || user?.displayName || 'User'}</p>
+                <p className="text-[10px] uppercase tracking-widest font-bold text-outline truncate w-full text-center">{user?.email}</p>
+              </div>
+
+              <div className="space-y-2 flex-1">
+                <button 
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                >
+                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                    <Settings className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="font-bold text-sm">Edit Profile</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setToast("Preferences coming soon!");
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                >
+                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                    <Palette className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="font-bold text-sm">Appearance</span>
+                </button>
+
+                <div className="pt-4 px-4">
+                  <div className="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="flex items-center gap-3">
+                      {theme === 'dark' ? <Moon className="w-4 h-4 text-primary" /> : <Sun className="w-4 h-4 text-primary" />}
+                      <span className="text-xs font-bold uppercase tracking-widest text-outline">Theme</span>
+                    </div>
+                    <button 
+                      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                      className="relative w-12 h-6 bg-surface-container-highest rounded-full p-1 transition-colors"
+                    >
+                      <motion.div 
+                        animate={{ x: theme === 'dark' ? 24 : 0 }}
+                        className="w-4 h-4 bg-primary rounded-full"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-error/10 text-error transition-colors mt-auto"
+              >
+                <div className="p-2 bg-error/10 rounded-lg">
+                  <LogOut className="w-5 h-5" />
+                </div>
+                <span className="font-bold text-sm">Logout</span>
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Goal Creation Modal */}
       <AnimatePresence>
@@ -1977,7 +2183,7 @@ export default function App() {
                     autoFocus
                     type="text" 
                     placeholder="Enter the ID shared by your partner"
-                    className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-mono text-xl"
+                    className="w-full bg-transparent text-on-surface border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-mono text-xl placeholder:text-outline/30"
                     value={joinGoalId}
                     onChange={e => setJoinGoalId(e.target.value)}
                   />
@@ -2005,12 +2211,14 @@ export default function App() {
       </nav>
 
       {/* Floating Action Button */}
-      <button 
+      <motion.button 
+        whileHover={{ scale: 1.1, rotate: 90 }}
+        whileTap={{ scale: 0.9 }}
         onClick={() => setIsFundModalOpen(true)}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform z-40 md:bottom-10"
+        className="fixed bottom-24 right-6 w-14 h-14 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-2xl z-40 md:bottom-10"
       >
         <Plus className="w-8 h-8" />
-      </button>
+      </motion.button>
     </div>
   );
 }
@@ -2026,18 +2234,20 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
     setLoading(true);
     try {
       const prompt = location 
-        ? `Find romantic date spots or places related to "${finalQuery || 'romantic spots'}" near coordinates ${location.lat}, ${location.lng}. Return a JSON array of objects with name, address, rating, and description.`
-        : `Find romantic date spots or places related to "${finalQuery}" in South Africa. Return a JSON array of objects with name, address, rating, and description.`;
+        ? `Find romantic date spots or places related to "${finalQuery || 'romantic spots'}" near coordinates ${location.lat}, ${location.lng}. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`
+        : `Find romantic date spots or places related to "${finalQuery}" in South Africa. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { 
-          tools: [{ googleMaps: {} }],
-          responseMimeType: "application/json" 
+          tools: [{ googleMaps: {} }]
         }
       });
-      const data = JSON.parse(response.text);
+      
+      const text = response.text || '';
+      const cleanText = text.replace(/```json\n?|```/g, '').trim();
+      const data = JSON.parse(cleanText);
       setResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Maps search failed", error);
@@ -2063,7 +2273,7 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
         <input 
           type="text"
           placeholder="Search for romantic spots..."
-          className="w-full bg-surface-container rounded-full py-4 px-12 outline-none focus:ring-2 ring-primary/20 transition-all font-serif"
+          className="w-full bg-surface-container text-on-surface rounded-full py-4 pl-12 pr-28 outline-none focus:ring-2 ring-primary/20 transition-all font-serif placeholder:text-outline/50"
           value={queryStr}
           onChange={e => setQueryStr(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && searchPlaces()}
@@ -2071,7 +2281,7 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline" />
         <button 
           onClick={searchPlaces}
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-4 py-2 rounded-full text-xs font-bold"
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-6 py-2.5 rounded-full text-xs font-bold shadow-sm active:scale-95 transition-transform"
         >
           Search
         </button>
@@ -2085,7 +2295,14 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
 
       <div className="space-y-4">
         {results.map((place, i) => (
-          <div key={i} className="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/20 transition-all">
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            whileHover={{ scale: 1.01, x: 5 }}
+            className="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/20 transition-all shadow-sm hover:shadow-md cursor-default"
+          >
             <div className="flex justify-between items-start mb-2">
               <h3 className="font-serif text-xl">{place.name}</h3>
               <span className="text-secondary font-bold text-sm">★ {place.rating}</span>
@@ -2094,7 +2311,7 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
               <MapPin className="w-3 h-3" /> {place.address}
             </p>
             <p className="text-on-surface/80 text-sm leading-relaxed">{place.description}</p>
-          </div>
+          </motion.div>
         ))}
       </div>
     </motion.div>
@@ -2198,18 +2415,20 @@ function DiscoverView({ location, goals, events }: {
           <input 
             type="text"
             placeholder="What are you dreaming of?"
-            className="w-full bg-surface-container rounded-full py-5 px-14 outline-none focus:ring-2 ring-primary/20 transition-all font-serif text-lg shadow-lg"
+            className="w-full bg-surface-container text-on-surface rounded-full py-5 pl-14 pr-36 outline-none focus:ring-2 ring-primary/20 transition-all font-serif text-lg shadow-lg placeholder:text-outline/50"
             value={queryStr}
             onChange={e => setQueryStr(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && discoverIdeas()}
           />
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-outline" />
-          <button 
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => discoverIdeas()}
-            className="absolute right-3 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-6 py-2.5 rounded-full text-sm font-bold shadow-md active:scale-95 transition-transform"
+            className="absolute right-3 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-8 py-3 rounded-full text-sm font-bold shadow-md"
           >
             Explore
-          </button>
+          </motion.button>
         </div>
 
         {/* AI Suggestions */}
@@ -2217,16 +2436,21 @@ function DiscoverView({ location, goals, events }: {
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-[10px] uppercase tracking-widest font-bold text-outline mr-2">AI Suggestions:</span>
             {suggestions.map((s, i) => (
-              <button 
+              <motion.button 
                 key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ scale: 1.1, backgroundColor: "rgba(255, 177, 196, 0.2)" }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => {
                   setQueryStr(s);
                   discoverIdeas(s);
                 }}
-                className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors border border-primary/20"
+                className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full transition-colors border border-primary/20"
               >
                 {s}
-              </button>
+              </motion.button>
             ))}
           </div>
         )}
@@ -2234,17 +2458,22 @@ function DiscoverView({ location, goals, events }: {
         {/* Quick Filters */}
         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
           {quickFilters.map((filter, i) => (
-            <button 
+            <motion.button 
               key={i}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05 }}
+              whileHover={{ scale: 1.05, backgroundColor: "var(--surface-container-highest)" }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => {
                 setQueryStr(filter.label);
                 discoverIdeas(filter.label);
               }}
-              className="flex items-center gap-2 whitespace-nowrap bg-surface-container-high px-4 py-2 rounded-full text-xs font-bold text-on-surface hover:bg-surface-container-highest transition-colors border border-outline-variant/10"
+              className="flex items-center gap-2 whitespace-nowrap bg-surface-container-high px-4 py-2 rounded-full text-xs font-bold text-on-surface transition-colors border border-outline-variant/10"
             >
               {filter.icon}
               {filter.label}
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>
@@ -2301,8 +2530,14 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
   }, [idea.title]);
 
   return (
-    <div className="bg-surface-container-low overflow-hidden rounded-3xl border border-outline-variant/10 flex flex-col">
-      <div className="h-48 w-full relative bg-surface-container-highest">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      whileHover={{ y: -5 }}
+      className="bg-surface-container-low overflow-hidden rounded-3xl border border-outline-variant/10 flex flex-col shadow-sm hover:shadow-xl transition-all duration-300 glass-highlight"
+    >
+      <div className="h-48 w-full relative bg-surface-container-highest overflow-hidden">
         {(isGenerating && !imageUrl) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -2311,8 +2546,9 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
         )}
         {imageUrl && (
           <motion.img 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, scale: 1.1 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
             src={imageUrl} 
             alt={idea.title}
             className="w-full h-full object-cover"
@@ -2326,17 +2562,18 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
         <p className="text-on-surface/80 text-sm leading-relaxed">{idea.summary}</p>
         <div className="flex justify-between items-center pt-2">
           <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Source: {idea.source}</span>
-          <a 
+          <motion.a 
+            whileHover={{ x: 5 }}
             href={`https://www.google.com/search?q=${encodeURIComponent(idea.title + ' ' + idea.source)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary text-xs font-bold uppercase tracking-widest hover:underline"
+            className="text-primary text-xs font-bold uppercase tracking-widest hover:underline flex items-center gap-1"
           >
-            Read More
-          </a>
+            Read More <ChevronRight className="w-3 h-3" />
+          </motion.a>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -2348,11 +2585,18 @@ function ContributorCard({ name, amount, status, avatar, isActive = false }: {
   isActive?: boolean 
 }) {
   return (
-    <div className="bg-surface-container-low rounded-2xl p-6 flex items-center justify-between group hover:bg-surface-container transition-colors">
+    <motion.div 
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      className="bg-surface-container-low rounded-2xl p-6 flex items-center justify-between group hover:bg-surface-container transition-all duration-300 shadow-sm hover:shadow-md border border-outline-variant/5"
+    >
       <div className="flex items-center gap-4">
-        <div className={`h-14 w-14 rounded-full overflow-hidden border-2 ${isActive ? 'border-primary/20' : 'border-outline-variant/20'}`}>
+        <motion.div 
+          whileHover={{ rotate: 5 }}
+          className={`h-14 w-14 rounded-full overflow-hidden border-2 ${isActive ? 'border-primary/20' : 'border-outline-variant/20'}`}
+        >
           <img className="w-full h-full object-cover" src={avatar} alt={name} referrerPolicy="no-referrer" />
-        </div>
+        </motion.div>
         <div>
           <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Contributor</span>
           <p className="font-serif text-lg">{name}</p>
@@ -2362,7 +2606,7 @@ function ContributorCard({ name, amount, status, avatar, isActive = false }: {
         <p className="font-bold text-on-surface">{amount}</p>
         <span className={`text-[10px] ${isActive ? 'text-secondary' : 'text-outline'}`}>{status}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -2377,9 +2621,15 @@ function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "tex
   key?: string | number
 }) {
   return (
-    <div className="flex items-center justify-between bg-surface/20 p-2 rounded-xl">
+    <motion.div 
+      initial={{ opacity: 0, x: -10 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true }}
+      whileHover={{ x: 5, backgroundColor: "rgba(255, 255, 255, 0.05)" }}
+      className="flex items-center justify-between bg-surface/20 p-3 rounded-xl transition-colors cursor-default"
+    >
       <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center overflow-hidden`}>
+        <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center overflow-hidden shadow-inner`}>
           {avatar ? (
             <img src={avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
@@ -2392,7 +2642,7 @@ function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "tex
         </div>
       </div>
       <p className={`font-bold ${amountColor}`}>{amount}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -2400,14 +2650,31 @@ function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNo
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center justify-center p-2 transition-all active:scale-90 ${
-        active 
-          ? 'bg-gradient-to-br from-primary to-primary-container text-background rounded-full h-12 w-12' 
-          : 'text-on-surface/70 hover:text-primary'
-      }`}
+      className="relative flex flex-col items-center justify-center p-2 group"
     >
-      {icon}
-      {!active && <span className="font-sans text-[10px] uppercase tracking-widest font-bold mt-1">{label}</span>}
+      {active && (
+        <motion.div 
+          layoutId="nav-active"
+          className="absolute inset-0 bg-gradient-to-br from-primary to-primary-container rounded-full h-12 w-12 self-center m-auto"
+          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+        />
+      )}
+      <motion.div 
+        animate={{ 
+          scale: active ? 1.1 : 1,
+          y: active ? -2 : 0
+        }}
+        className={`relative z-10 flex flex-col items-center justify-center ${
+          active ? 'text-background' : 'text-on-surface/70 group-hover:text-primary'
+        }`}
+      >
+        {icon}
+        {!active && (
+          <span className="font-sans text-[10px] uppercase tracking-widest font-bold mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {label}
+          </span>
+        )}
+      </motion.div>
     </button>
   );
 }

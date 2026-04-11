@@ -50,6 +50,11 @@ service cloud.firestore {
     //   - time: string (optional)
     //   - location: string (optional)
     //   - reminder: bool (optional)
+    //   - reminderMinutes: number (optional)
+    //   - reminderSent: bool (optional)
+    //   - tags: list (optional)
+    //   - collaborators: list (optional)
+    //   - rsvps: map (optional)
     //   - createdAt: string (required) - ISO 8601 timestamp
     //
     // ===============================================================
@@ -148,6 +153,11 @@ service cloud.firestore {
              (!('time' in data) || (data.time is string)) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 500)) &&
              (!('reminder' in data) || (data.reminder is bool)) &&
+             (!('reminderMinutes' in data) || (data.reminderMinutes is number)) &&
+             (!('reminderSent' in data) || (data.reminderSent is bool)) &&
+             (!('tags' in data) || (data.tags is list)) &&
+             (!('collaborators' in data) || (data.collaborators is list)) &&
+             (!('rsvps' in data) || (data.rsvps is map)) &&
              isValidTimestamp(data.createdAt);
     }
 

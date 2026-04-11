@@ -6,38 +6,110 @@
   --font-sans: "Plus Jakarta Sans", sans-serif;
   --font-headline: "Noto Serif", serif;
 
-  --color-background: #131313;
-  --color-surface: #131313;
-  --color-surface-container: #201f1f;
-  --color-surface-container-low: #1c1b1b;
-  --color-surface-container-high: #2a2a2a;
-  --color-surface-container-highest: #353534;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
   
-  --color-primary: #ffb1c4;
-  --color-primary-container: #e9638e;
-  --color-on-primary: #65002f;
-  --color-on-primary-container: #590028;
-  --color-on-primary-fixed: #3f001a;
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: var(--on-primary);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-on-primary-fixed: var(--on-primary-fixed);
 
-  --color-secondary: #68dbae;
-  --color-secondary-container: #26a37a;
-  --color-on-secondary: #003827;
-  --color-on-secondary-container: #003121;
+  --color-secondary: var(--secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary: var(--on-secondary);
+  --color-on-secondary-container: var(--on-secondary-container);
 
-  --color-on-surface: #e5e2e1;
-  --color-on-surface-variant: #dcbfc5;
-  --color-outline: #a48a8f;
-  --color-outline-variant: #564146;
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
 
   --radius-2xl: 1.5rem;
 }
 
+:root {
+  --background: #131313;
+  --surface: #131313;
+  --surface-container: #201f1f;
+  --surface-container-low: #1c1b1b;
+  --surface-container-high: #2a2a2a;
+  --surface-container-highest: #353534;
+  
+  --primary: #ffb1c4;
+  --primary-container: #e9638e;
+  --on-primary: #65002f;
+  --on-primary-container: #590028;
+  --on-primary-fixed: #3f001a;
+
+  --secondary: #68dbae;
+  --secondary-container: #26a37a;
+  --on-secondary: #003827;
+  --on-secondary-container: #003121;
+
+  --on-surface: #e5e2e1;
+  --on-surface-variant: #dcbfc5;
+  --outline: #a48a8f;
+  --outline-variant: #564146;
+}
+
+:root.light {
+  --background: #fffbff;
+  --surface: #fffbff;
+  --surface-container: #f7f0f1;
+  --surface-container-low: #fdf1f3;
+  --surface-container-high: #f1e5e7;
+  --surface-container-highest: #ebe0e1;
+  
+  --primary: #9b405f;
+  --primary-container: #ffd9e1;
+  --on-primary: #ffffff;
+  --on-primary-container: #3f001a;
+  --on-primary-fixed: #3f001a;
+
+  --secondary: #006b4f;
+  --secondary-container: #86f8cc;
+  --on-secondary: #ffffff;
+  --on-secondary-container: #002116;
+
+  --on-surface: #201a1b;
+  --on-surface-variant: #534346;
+  --outline: #857376;
+  --outline-variant: #d8c2c5;
+}
+
 @layer base {
   body {
-    @apply bg-background text-on-surface font-sans antialiased;
+    @apply bg-background text-on-surface font-sans antialiased transition-colors duration-500;
   }
 }
 
 .progress-glow {
   box-shadow: 0 0 15px rgba(255, 177, 196, 0.3);
+}
+
+.glass-highlight {
+  @apply relative overflow-hidden;
+}
+
+.glass-highlight::after {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full;
+  transition: transform 0.6s ease-in-out;
+}
+
+.glass-highlight:hover::after {
+  @apply translate-x-full;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
