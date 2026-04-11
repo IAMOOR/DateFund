@@ -23,7 +23,9 @@ import {
   Search,
   MapPin,
   Bell,
-  Clock
+  Clock,
+  Plane,
+  Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -60,6 +62,7 @@ const AVATAR_NAV = "https://lh3.googleusercontent.com/aida-public/AB6AXuA20UXs9p
 interface Goal {
   id: string;
   ownerUid: string;
+  collaborators: string[];
   name: string;
   targetAmount: number;
   currentAmount: number;
@@ -88,6 +91,7 @@ interface Event {
   time?: string;
   location?: string;
   reminder?: boolean;
+  reminderSent?: boolean;
   createdAt: string;
 }
 
@@ -104,6 +108,8 @@ export default function App() {
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
+  const [joinGoalId, setJoinGoalId] = useState('');
   const [newGoal, setNewGoal] = useState({ name: '', target: '', deadline: '' });
   const [fundData, setFundData] = useState({ goalId: '', amount: '', contributor: 'Me' as 'Me' | 'Them' });
   const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', time: '', location: '', reminder: false });
@@ -114,8 +120,35 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [activeReminders, setActiveReminders] = useState<Event[]>([]);
+
+  const passwordStrength = useMemo(() => {
+    if (!password) return 0;
+    let strength = 0;
+    if (password.length >= 8) strength += 1;
+    if (/[A-Z]/.test(password)) strength += 1;
+    if (/[a-z]/.test(password)) strength += 1;
+    if (/[0-9]/.test(password)) strength += 1;
+    if (/[^A-Za-z0-9]/.test(password)) strength += 1;
+    return strength;
+  }, [password]);
+
+  const getStrengthColor = (score: number) => {
+    if (score <= 2) return "bg-error";
+    if (score <= 4) return "bg-secondary";
+    return "bg-primary";
+  };
+
+  const getStrengthLabel = (score: number) => {
+    if (!password) return "";
+    if (score <= 2) return "Weak";
+    if (score <= 4) return "Fair";
+    return "Strong";
+  };
 
   // Auth Listener
   useEffect(() => {
@@ -172,6 +205,64 @@ export default function App() {
     }
   }, []);
 
+  // Reminder Checker
+  useEffect(() => {
+    if (!user || events.length === 0) return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      const upcoming = events.filter(event => {
+        if (!event.reminder || event.reminderSent) return false;
+        
+        const eventDateTime = new Date(`${event.date}T${event.time || '00:00'}`);
+        // Remind 15 minutes before or if it's already started but within 1 hour
+        const reminderTime = new Date(eventDateTime.getTime() - 15 * 60000);
+        const expiryTime = new Date(eventDateTime.getTime() + 60 * 60000);
+        
+        return now >= reminderTime && now < expiryTime;
+      });
+
+      if (upcoming.length > 0) {
+        setActiveReminders(prev => {
+          const newReminders = upcoming.filter(u => !prev.find(p => p.id === u.id));
+          return [...prev, ...newReminders];
+        });
+        
+        // Mark as sent in Firestore to avoid repeat notifications
+        upcoming.forEach(async (event) => {
+          try {
+            await setDoc(doc(db, 'events', event.id), {
+              ...event,
+              reminderSent: true
+            }, { merge: true });
+          } catch (err) {
+            console.error("Failed to update reminder status", err);
+          }
+        });
+
+        // Browser Notification if possible
+        if ("Notification" in window && Notification.permission === "granted") {
+          upcoming.forEach(event => {
+            new Notification(`DateFund Reminder: ${event.title}`, {
+              body: `Event at ${event.time || 'today'}! ${event.location ? `at ${event.location}` : ''}`,
+            });
+          });
+        }
+      }
+    };
+
+    const interval = setInterval(checkReminders, 30000); // Check every 30 seconds
+    checkReminders(); // Initial check
+    return () => clearInterval(interval);
+  }, [user, events]);
+
+  // Request Notification Permission
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Firestore Listeners
   useEffect(() => {
     if (!user) {
@@ -180,7 +271,28 @@ export default function App() {
       return;
     }
 
-    const goalsQuery = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
+    // Migration: Ensure all owned goals have collaborators list
+    const fixOldGoals = async () => {
+      try {
+        const q = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
+        const snap = await getDocs(q);
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data();
+          if (!data.collaborators) {
+            await setDoc(doc(db, 'goals', docSnap.id), {
+              ...data,
+              collaborators: [user.uid]
+            }, { merge: true });
+          }
+        }
+      } catch (err) {
+        // Silent fail for migration
+        console.debug("Migration check skipped or failed", err);
+      }
+    };
+    fixOldGoals();
+
+    const goalsQuery = query(collection(db, 'goals'), where('collaborators', 'array-contains', user.uid));
     const unsubscribeGoals = onSnapshot(goalsQuery, (snapshot) => {
       const goalsList = snapshot.docs.map(doc => ({ ...doc.data() } as Goal));
       setGoals(goalsList.sort((a, b) => b.id.localeCompare(a.id)));
@@ -243,9 +355,31 @@ export default function App() {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
-    
     setAuthError('');
+    setEmailError('');
+    setPasswordError('');
+
+    // Robust Validation
+    let hasError = false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) {
+      setEmailError("Email is required");
+      hasError = true;
+    } else if (!emailRegex.test(email)) {
+      setEmailError("Please enter a valid email address");
+      hasError = true;
+    }
+
+    if (!password) {
+      setPasswordError("Password is required");
+      hasError = true;
+    } else if (authMode === 'signup' && password.length < 8) {
+      setPasswordError("Password must be at least 8 characters");
+      hasError = true;
+    }
+
+    if (hasError) return;
+    
     setIsAuthenticating(true);
     
     try {
@@ -257,10 +391,12 @@ export default function App() {
     } catch (error: any) {
       console.error("Email auth failed", error);
       let message = "Authentication failed.";
-      if (error.code === 'auth/email-already-in-use') message = "Email already in use.";
+      if (error.code === 'auth/email-already-in-use') message = "This email is already registered.";
       if (error.code === 'auth/invalid-email') message = "Invalid email address.";
       if (error.code === 'auth/weak-password') message = "Password is too weak.";
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') message = "Invalid email or password.";
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        message = "Invalid email or password.";
+      }
       setAuthError(message);
     } finally {
       setIsAuthenticating(false);
@@ -284,6 +420,7 @@ export default function App() {
     const goal: Goal = {
       id: goalId,
       ownerUid: user.uid,
+      collaborators: [user.uid],
       name: newGoal.name,
       targetAmount: parseFloat(newGoal.target),
       currentAmount: 0,
@@ -394,6 +531,38 @@ export default function App() {
     }
   };
 
+  const handleJoinGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !joinGoalId) return;
+
+    try {
+      const goalRef = doc(db, 'goals', joinGoalId);
+      const goalSnap = await getDoc(goalRef);
+      
+      if (!goalSnap.exists()) {
+        setToast("Goal not found. Check the ID.");
+        return;
+      }
+
+      const goalData = goalSnap.data() as Goal;
+      if (goalData.collaborators.includes(user.uid)) {
+        setToast("You are already a collaborator!");
+        setIsJoinGoalModalOpen(false);
+        return;
+      }
+
+      await setDoc(goalRef, {
+        collaborators: [...goalData.collaborators, user.uid]
+      }, { merge: true });
+
+      setToast("Joined goal successfully!");
+      setJoinGoalId('');
+      setIsJoinGoalModalOpen(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `goals/${joinGoalId}`);
+    }
+  };
+
   if (!isAuthReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -420,32 +589,55 @@ export default function App() {
               {authMode === 'signin' ? 'Welcome Back' : 'Create Account'}
             </h2>
 
-            <form onSubmit={handleEmailAuth} className="space-y-4">
+            <form onSubmit={handleEmailAuth} className="space-y-6">
               <div className="space-y-1">
                 <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Email Address</label>
                 <input 
                   type="email" 
-                  required
                   placeholder="you@example.com"
-                  className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors"
+                  className={`w-full bg-transparent border-b-2 py-2 outline-none transition-colors ${emailError ? 'border-error' : 'border-outline-variant/30 focus:border-primary'}`}
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={e => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError('');
+                  }}
                 />
+                {emailError && <p className="text-error text-[10px] font-bold uppercase tracking-widest mt-1">{emailError}</p>}
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Password</label>
                 <input 
                   type="password" 
-                  required
                   placeholder="••••••••"
-                  className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors"
+                  className={`w-full bg-transparent border-b-2 py-2 outline-none transition-colors ${passwordError ? 'border-error' : 'border-outline-variant/30 focus:border-primary'}`}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => {
+                    setPassword(e.target.value);
+                    if (passwordError) setPasswordError('');
+                  }}
                 />
+                {passwordError && <p className="text-error text-[10px] font-bold uppercase tracking-widest mt-1">{passwordError}</p>}
+                
+                {authMode === 'signup' && password && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Strength: {getStrengthLabel(passwordStrength)}</span>
+                    </div>
+                    <div className="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(passwordStrength / 5) * 100}%` }}
+                        className={`h-full ${getStrengthColor(passwordStrength)}`}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {authError && (
-                <p className="text-error text-xs font-medium text-center">{authError}</p>
+                <div className="bg-error/10 p-3 rounded-xl border border-error/20">
+                  <p className="text-error text-xs font-medium text-center">{authError}</p>
+                </div>
               )}
 
               <button 
@@ -526,6 +718,47 @@ export default function App() {
         </div>
       </nav>
 
+      {/* Reminder Notifications */}
+      <div className="fixed top-24 right-6 z-[110] space-y-4 pointer-events-none">
+        <AnimatePresence>
+          {activeReminders.map((reminder) => (
+            <motion.div
+              key={reminder.id}
+              initial={{ opacity: 0, x: 50, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-primary text-on-primary-fixed p-6 rounded-2xl shadow-2xl border border-white/10 max-w-xs pointer-events-auto"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div className="bg-white/20 p-2 rounded-full">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <button 
+                  onClick={() => setActiveReminders(prev => prev.filter(r => r.id !== reminder.id))}
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <h4 className="font-serif text-lg mb-1">{reminder.title}</h4>
+              <p className="text-xs opacity-90 mb-3">
+                {reminder.time ? `Starts at ${reminder.time}` : 'Scheduled for today'}
+                {reminder.location && ` • ${reminder.location}`}
+              </p>
+              <button 
+                onClick={() => {
+                  setView('planner');
+                  setActiveReminders(prev => prev.filter(r => r.id !== reminder.id));
+                }}
+                className="w-full bg-white/20 hover:bg-white/30 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold transition-colors"
+              >
+                View in Planner
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
@@ -567,7 +800,10 @@ export default function App() {
                   <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/10 rounded-full blur-3xl transition-transform group-hover:scale-150 duration-700"></div>
                   <div className="flex justify-between items-end mb-6 relative z-10">
                     <div className="space-y-1">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Primary Dream</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Primary Dream</span>
+                        <span className="text-[8px] bg-surface-container-highest px-2 py-0.5 rounded text-outline font-mono">ID: {goals[0].id}</span>
+                      </div>
                       <h3 className="text-2xl font-serif">{goals[0].name}</h3>
                     </div>
                     <div className="bg-secondary-container/20 text-secondary px-3 py-1 rounded-full text-xs font-bold">
@@ -610,6 +846,7 @@ export default function App() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h5 className="font-serif text-lg">{goal.name}</h5>
+                          <span className="text-[8px] bg-surface-container-highest px-2 py-0.5 rounded text-outline font-mono">ID: {goal.id}</span>
                           <span className="text-[10px] text-outline uppercase tracking-widest">Until {new Date(goal.deadline).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' })}</span>
                         </div>
                         <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
@@ -678,6 +915,13 @@ export default function App() {
                   >
                     <Share2 className="w-4 h-4" />
                     Invite
+                  </button>
+                  <button 
+                    onClick={() => setIsJoinGoalModalOpen(true)}
+                    className="flex-1 bg-surface-container-high text-on-surface py-4 rounded-full font-bold text-sm hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2"
+                  >
+                    <PiggyBank className="w-4 h-4" />
+                    Join Goal
                   </button>
                   <button 
                     onClick={() => setIsGoalModalOpen(true)}
@@ -1154,6 +1398,55 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Join Goal Modal */}
+      <AnimatePresence>
+        {isJoinGoalModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsJoinGoalModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-serif">Join a Dream</h3>
+                <button onClick={() => setIsJoinGoalModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={handleJoinGoal} className="space-y-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Goal ID</label>
+                  <input 
+                    autoFocus
+                    type="text" 
+                    placeholder="Enter the ID shared by your partner"
+                    className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-mono text-xl"
+                    value={joinGoalId}
+                    onChange={e => setJoinGoalId(e.target.value)}
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold mt-8 active:scale-95 transition-transform"
+                >
+                  Join Goal
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Bottom Navigation (Mobile) */}
       <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-surface/60 backdrop-blur-md rounded-t-2xl md:hidden">
         <NavItem icon={<Home className="w-6 h-6" fill={view === 'home' ? "currentColor" : "none"} />} label="Home" active={view === 'home'} onClick={() => setView('home')} />
@@ -1268,10 +1561,39 @@ function DiscoverView({ location, goals, events }: {
   const [queryStr, setQueryStr] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+
+  const fetchSuggestions = async () => {
+    setIsSuggesting(true);
+    try {
+      const goalsContext = goals.length > 0 
+        ? `The user is saving for: ${goals.map(g => g.name).join(', ')}.` 
+        : '';
+      
+      const prompt = `You are a romantic date and travel expert. 
+        ${goalsContext}
+        Based on these goals, suggest 4 short, catchy search queries (2-4 words each) for date ideas or travel destinations.
+        Return a JSON array of strings.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      const data = JSON.parse(response.text);
+      setSuggestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Suggestions failed", error);
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
 
   const discoverIdeas = async (searchQuery?: string) => {
     const finalQuery = searchQuery || queryStr;
     setLoading(true);
+    setSuggestions([]); // Clear suggestions when searching
     try {
       const goalsContext = goals.length > 0 
         ? `The user is saving for: ${goals.map(g => g.name).join(', ')}.` 
@@ -1285,7 +1607,7 @@ function DiscoverView({ location, goals, events }: {
         Based on these interests and the search "${finalQuery || 'unique date ideas'}", 
         provide 5 personalized, high-quality recommendations. 
         ${location ? `Prioritize locations near ${location.lat}, ${location.lng} if relevant.` : ''}
-        Return a JSON array of objects with title, source, and summary.`;
+        Return a JSON array of objects with title, source, summary, and a descriptive imageSearchTerm for finding a relevant photo.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -1306,7 +1628,15 @@ function DiscoverView({ location, goals, events }: {
 
   useEffect(() => {
     discoverIdeas();
+    fetchSuggestions();
   }, [location]);
+
+  const quickFilters = [
+    { label: 'Romantic Dinners', icon: <Utensils className="w-3 h-3" /> },
+    { label: 'Weekend Getaways', icon: <Plane className="w-3 h-3" /> },
+    { label: 'Outdoor Adventures', icon: <Compass className="w-3 h-3" /> },
+    { label: 'Cultural Dates', icon: <Palette className="w-3 h-3" /> }
+  ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
@@ -1315,22 +1645,60 @@ function DiscoverView({ location, goals, events }: {
         <p className="text-outline text-sm">Inspiration for your shared future.</p>
       </div>
 
-      <div className="relative">
-        <input 
-          type="text"
-          placeholder="What are you dreaming of?"
-          className="w-full bg-surface-container rounded-full py-4 px-12 outline-none focus:ring-2 ring-primary/20 transition-all font-serif"
-          value={queryStr}
-          onChange={e => setQueryStr(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && discoverIdeas()}
-        />
-        <Compass className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline" />
-        <button 
-          onClick={discoverIdeas}
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-4 py-2 rounded-full text-xs font-bold"
-        >
-          Explore
-        </button>
+      <div className="space-y-4">
+        <div className="relative">
+          <input 
+            type="text"
+            placeholder="What are you dreaming of?"
+            className="w-full bg-surface-container rounded-full py-5 px-14 outline-none focus:ring-2 ring-primary/20 transition-all font-serif text-lg shadow-lg"
+            value={queryStr}
+            onChange={e => setQueryStr(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && discoverIdeas()}
+          />
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-outline" />
+          <button 
+            onClick={() => discoverIdeas()}
+            className="absolute right-3 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-6 py-2.5 rounded-full text-sm font-bold shadow-md active:scale-95 transition-transform"
+          >
+            Explore
+          </button>
+        </div>
+
+        {/* AI Suggestions */}
+        {suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-outline mr-2">AI Suggestions:</span>
+            {suggestions.map((s, i) => (
+              <button 
+                key={i}
+                onClick={() => {
+                  setQueryStr(s);
+                  discoverIdeas(s);
+                }}
+                className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors border border-primary/20"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Quick Filters */}
+        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+          {quickFilters.map((filter, i) => (
+            <button 
+              key={i}
+              onClick={() => {
+                setQueryStr(filter.label);
+                discoverIdeas(filter.label);
+              }}
+              className="flex items-center gap-2 whitespace-nowrap bg-surface-container-high px-4 py-2 rounded-full text-xs font-bold text-on-surface hover:bg-surface-container-highest transition-colors border border-outline-variant/10"
+            >
+              {filter.icon}
+              {filter.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && (
@@ -1339,26 +1707,88 @@ function DiscoverView({ location, goals, events }: {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-6">
         {results.map((idea, i) => (
-          <div key={i} className="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/10">
-            <h3 className="font-serif text-xl mb-2">{idea.title}</h3>
-            <p className="text-on-surface/80 text-sm mb-4">{idea.summary}</p>
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Source: {idea.source}</span>
-              <a 
-                href={`https://www.google.com/search?q=${encodeURIComponent(idea.title + ' ' + idea.source)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary text-xs font-bold uppercase tracking-widest hover:underline"
-              >
-                Read More
-              </a>
-            </div>
-          </div>
+          <DiscoverCard key={i} idea={idea} />
         ))}
       </div>
     </motion.div>
+  );
+}
+
+function DiscoverCard({ idea }: { idea: any, key?: any }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    const generateImage = async () => {
+      setIsGenerating(true);
+      try {
+        const response = await ai.models.generateImages({
+          model: 'imagen-4.0-generate-001',
+          prompt: `A high-quality, professional editorial photograph of: ${idea.title}. ${idea.summary}. Style: Romantic, elegant, cinematic lighting, high resolution.`,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/jpeg',
+            aspectRatio: '16:9',
+          },
+        });
+
+        if (response.generatedImages?.[0]?.image?.imageBytes) {
+          const base64 = response.generatedImages[0].image.imageBytes;
+          setImageUrl(`data:image/jpeg;base64,${base64}`);
+        } else {
+          throw new Error("No image data returned");
+        }
+      } catch (error) {
+        console.error("Image generation failed", error);
+        // Fallback to picsum
+        setImageUrl(`https://picsum.photos/seed/${encodeURIComponent(idea.imageSearchTerm || idea.title)}/800/400`);
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+
+    generateImage();
+  }, [idea.title]);
+
+  return (
+    <div className="bg-surface-container-low overflow-hidden rounded-3xl border border-outline-variant/10 flex flex-col">
+      <div className="h-48 w-full relative bg-surface-container-highest">
+        {(isGenerating && !imageUrl) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-[8px] uppercase tracking-widest font-bold text-outline">Painting your dream...</span>
+          </div>
+        )}
+        {imageUrl && (
+          <motion.img 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            src={imageUrl} 
+            alt={idea.title}
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-surface-container-low/80 to-transparent" />
+      </div>
+      <div className="p-6 space-y-4">
+        <h3 className="font-serif text-2xl">{idea.title}</h3>
+        <p className="text-on-surface/80 text-sm leading-relaxed">{idea.summary}</p>
+        <div className="flex justify-between items-center pt-2">
+          <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Source: {idea.source}</span>
+          <a 
+            href={`https://www.google.com/search?q=${encodeURIComponent(idea.title + ' ' + idea.source)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary text-xs font-bold uppercase tracking-widest hover:underline"
+          >
+            Read More
+          </a>
+        </div>
+      </div>
+    </div>
   );
 }
 

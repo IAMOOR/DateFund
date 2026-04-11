@@ -19,6 +19,7 @@ service cloud.firestore {
     // Fields:
     //   - id: string (required)
     //   - ownerUid: string (required) - UID of the user who created the goal
+    //   - collaborators: list (required) - List of UIDs who can access the goal
     //   - name: string (required) - Goal name (1-100 chars)
     //   - targetAmount: number (required) - Target amount (> 0)
     //   - currentAmount: number (required) - Current saved amount
@@ -66,7 +67,18 @@ service cloud.firestore {
     }
 
     function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+      return isAuthenticated() && (
+        request.auth.uid == resource.data.ownerUid || 
+        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]))
+      );
+    }
+
+    function isGoalCollaborator(goalId) {
+      let goal = get(/databases/$(database)/documents/goals/$(goalId)).data;
+      return isAuthenticated() && (
+        goal.ownerUid == request.auth.uid ||
+        (goal.keys().hasAny(['collaborators']) && goal.collaborators.hasAny([request.auth.uid]))
+      );
     }
 
     function isValidEmail(email) {
@@ -93,9 +105,21 @@ service cloud.firestore {
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500));
     }
 
-    function isValidGoal(data) {
-      return data.keys().hasAll(['id', 'ownerUid', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
+    function isValidGoalCreate(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
              data.ownerUid == request.auth.uid &&
+             data.collaborators is list &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.targetAmount is number && data.targetAmount > 0 &&
+             data.currentAmount is number &&
+             isValidDate(data.deadline) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidGoalUpdate(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
+             data.ownerUid == resource.data.ownerUid &&
+             data.collaborators is list &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.targetAmount is number && data.targetAmount > 0 &&
              data.currentAmount is number &&
@@ -138,10 +162,18 @@ service cloud.firestore {
     }
 
     match /goals/{goalId} {
-      allow read: if isDocOwner();
-      allow create: if isAuthenticated() && isValidGoal(request.resource.data);
-      allow update: if isDocOwner() && isValidGoal(request.resource.data);
-      allow delete: if isDocOwner();
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.ownerUid || 
+        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]))
+      );
+      allow create: if isAuthenticated() && isValidGoalCreate(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.ownerUid && isValidGoalUpdate(request.resource.data)) ||
+        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]) && 
+         isValidGoalUpdate(request.resource.data) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentAmount', 'collaborators']))
+      );
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.ownerUid;
     }
 
     match /transactions/{transactionId} {
