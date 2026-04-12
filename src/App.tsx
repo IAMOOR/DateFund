@@ -104,6 +104,7 @@ interface Event {
   date: string;
   time?: string;
   location?: string;
+  goalId?: string;
   reminder?: boolean;
   reminderMinutes?: number;
   reminderSent?: boolean;
@@ -137,7 +138,7 @@ export default function App() {
   const [joinEventId, setJoinEventId] = useState('');
   const [newGoal, setNewGoal] = useState({ name: '', target: '', deadline: '' });
   const [fundData, setFundData] = useState({ goalId: '', amount: '', contributor: 'Me' as 'Me' | 'Them' });
-  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] as string[] });
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', time: '', location: '', goalId: '', reminder: false, reminderMinutes: 15, tags: [] as string[] });
   const [profileData, setProfileData] = useState({ displayName: '', photoURL: '' });
   const [customTag, setCustomTag] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -147,6 +148,8 @@ export default function App() {
   
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [isBreakUpSummaryOpen, setIsBreakUpSummaryOpen] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<string | null>(null);
+  const [eventToDelete, setEventToDelete] = useState<string | null>(null);
   const [breakUpData, setBreakUpData] = useState<{ me: number, them: number, goalsAffected: number } | null>(null);
   const [dailyAdvice, setDailyAdvice] = useState<string | null>(null);
   const [isAdviceLoading, setIsAdviceLoading] = useState(false);
@@ -578,6 +581,7 @@ export default function App() {
       date: newEvent.date,
       time: newEvent.time,
       location: newEvent.location,
+      goalId: newEvent.goalId,
       reminder: newEvent.reminder,
       reminderMinutes: newEvent.reminderMinutes,
       tags: newEvent.tags,
@@ -588,7 +592,7 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'events', eventId), event);
-      setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
+      setNewEvent({ title: '', description: '', date: '', time: '', location: '', goalId: '', reminder: false, reminderMinutes: 15, tags: [] });
       setIsEventModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `events/${eventId}`);
@@ -693,18 +697,32 @@ export default function App() {
   };
 
   const deleteGoal = async (id: string) => {
+    setGoalToDelete(id);
+  };
+
+  const confirmDeleteGoal = async () => {
+    if (!goalToDelete) return;
     try {
-      await deleteDoc(doc(db, 'goals', id));
+      await deleteDoc(doc(db, 'goals', goalToDelete));
+      setGoalToDelete(null);
+      setToast("Goal deleted successfully.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `goals/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `goals/${goalToDelete}`);
     }
   };
 
   const deleteEvent = async (id: string) => {
+    setEventToDelete(id);
+  };
+
+  const confirmDeleteEvent = async () => {
+    if (!eventToDelete) return;
     try {
-      await deleteDoc(doc(db, 'events', id));
+      await deleteDoc(doc(db, 'events', eventToDelete));
+      setEventToDelete(null);
+      setToast("Event deleted successfully.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `events/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `events/${eventToDelete}`);
     }
   };
 
@@ -1130,6 +1148,7 @@ export default function App() {
                         date: new Date().toISOString().split('T')[0],
                         time: '19:00',
                         location: '',
+                        goalId: '',
                         reminder: true,
                         reminderMinutes: 60,
                         tags: suggestedIdea.tags
@@ -1621,6 +1640,12 @@ export default function App() {
                                     {event.location}
                                   </div>
                                 )}
+                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <History className="w-3 h-3 text-primary" />
+                                    {goals.find(g => g.id === event.goalId)?.name}
+                                  </div>
+                                )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
                                   <div className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${
                                     event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
@@ -2009,6 +2034,20 @@ export default function App() {
                     value={editingEvent ? editingEvent.location : newEvent.location}
                     onChange={e => editingEvent ? setEditingEvent({...editingEvent, location: e.target.value}) : setNewEvent({...newEvent, location: e.target.value})}
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Link to Dream (Goal)</label>
+                  <select 
+                    className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm appearance-none"
+                    value={editingEvent ? (editingEvent.goalId || '') : newEvent.goalId}
+                    onChange={e => editingEvent ? setEditingEvent({...editingEvent, goalId: e.target.value}) : setNewEvent({...newEvent, goalId: e.target.value})}
+                  >
+                    <option value="" className="bg-surface">No Goal Linked</option>
+                    {goals.map(g => (
+                      <option key={g.id} value={g.id} className="bg-surface">{g.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -2437,6 +2476,94 @@ export default function App() {
               >
                 Keep Going
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Event Confirmation Modal */}
+      <AnimatePresence>
+        {eventToDelete && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEventToDelete(null)}
+              className="absolute inset-0 bg-background/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-surface-container rounded-3xl p-8 shadow-2xl border border-error/20 text-center"
+            >
+              <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="w-8 h-8 text-error" />
+              </div>
+              <h3 className="text-2xl font-serif text-on-surface mb-2">Delete this Event?</h3>
+              <p className="text-on-surface/80 text-sm leading-relaxed mb-8">
+                Are you sure you want to delete this event? This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setEventToDelete(null)}
+                  className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDeleteEvent}
+                  className="flex-[2] bg-error text-white py-4 rounded-full font-bold shadow-lg shadow-error/20 active:scale-95 transition-transform"
+                >
+                  Delete Event
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Goal Confirmation Modal */}
+      <AnimatePresence>
+        {goalToDelete && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setGoalToDelete(null)}
+              className="absolute inset-0 bg-background/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-surface-container rounded-3xl p-8 shadow-2xl border border-error/20 text-center"
+            >
+              <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="w-8 h-8 text-error" />
+              </div>
+              <h3 className="text-2xl font-serif text-on-surface mb-2">Delete this Dream?</h3>
+              <p className="text-on-surface/80 text-sm leading-relaxed mb-8">
+                Are you sure you want to delete this goal? This action cannot be undone and all associated progress will be lost.
+              </p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setGoalToDelete(null)}
+                  className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDeleteGoal}
+                  className="flex-[2] bg-error text-white py-4 rounded-full font-bold shadow-lg shadow-error/20 active:scale-95 transition-transform"
+                >
+                  Delete Goal
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

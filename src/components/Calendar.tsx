@@ -25,6 +25,7 @@ interface Event {
   date: string;
   time?: string;
   location?: string;
+  goalId?: string;
   reminder?: boolean;
   reminderMinutes?: number;
   reminderSent?: boolean;
