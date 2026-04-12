@@ -32,6 +32,7 @@ import {
   Sparkles,
   Wand2,
   Loader2,
+  Monitor,
   Sun,
   Moon
 } from 'lucide-react';
@@ -128,7 +129,10 @@ export default function App() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
+    const saved = localStorage.getItem('datefund-theme');
+    return (saved as 'light' | 'dark' | 'system') || 'system';
+  });
   const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
   const [isJoinEventModalOpen, setIsJoinEventModalOpen] = useState(false);
   const [plannerMode, setPlannerMode] = useState<'list' | 'calendar'>('calendar');
@@ -193,10 +197,30 @@ export default function App() {
   // Theme Listener
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'light') {
-      root.classList.add('light');
-    } else {
-      root.classList.remove('light');
+    localStorage.setItem('datefund-theme', theme);
+    
+    const applyTheme = (t: 'light' | 'dark' | 'system') => {
+      if (t === 'system') {
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (systemTheme === 'light') {
+          root.classList.add('light');
+        } else {
+          root.classList.remove('light');
+        }
+      } else if (t === 'light') {
+        root.classList.add('light');
+      } else {
+        root.classList.remove('light');
+      }
+    };
+
+    applyTheme(theme);
+
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyTheme('system');
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
     }
   }, [theme]);
 
@@ -1273,17 +1297,35 @@ export default function App() {
                       R {goals[0].targetAmount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
-                  <div className="relative h-4 w-full bg-surface-container-high rounded-full overflow-hidden mb-3">
+                  <div className="relative h-6 w-full bg-surface-container-high/50 rounded-full overflow-hidden mb-4 border border-outline-variant/5 group/progress">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min((goals[0].currentAmount / goals[0].targetAmount) * 100, 100)}%` }}
-                      transition={{ duration: 1, ease: "easeOut" }}
-                      className="absolute top-0 left-0 h-full bg-gradient-to-r from-secondary to-primary progress-glow rounded-full"
-                    />
+                      transition={{ duration: 1.5, ease: [0.34, 1.56, 0.64, 1] }}
+                      className="absolute top-0 left-0 h-full bg-gradient-to-r from-secondary via-primary to-primary-container progress-glow rounded-full relative overflow-hidden"
+                    >
+                      <motion.div 
+                        animate={{ 
+                          x: ['-100%', '200%'],
+                        }}
+                        transition={{ 
+                          duration: 3, 
+                          repeat: Infinity, 
+                          ease: "linear" 
+                        }}
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-12"
+                      />
+                    </motion.div>
                   </div>
-                  <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-outline/60">
-                    <span>{((goals[0].currentAmount / goals[0].targetAmount) * 100).toFixed(1)}% Saved</span>
-                    <span>R {Math.max(0, goals[0].targetAmount - goals[0].currentAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2 })} To Go</span>
+                  <div className="flex justify-between items-center text-[10px] uppercase tracking-[0.2em] font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="text-secondary">{((goals[0].currentAmount / goals[0].targetAmount) * 100).toFixed(1)}%</span>
+                      <span className="text-outline/40">Accomplished</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-outline/40">Remaining:</span>
+                      <span className="text-primary">R {Math.max(0, goals[0].targetAmount - goals[0].currentAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -1715,74 +1757,100 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex flex-col items-center mb-10 p-6 bg-surface-container-low rounded-3xl border border-outline-variant/10">
-                <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-primary/20 mb-4">
-                  <img 
-                    className="w-full h-full object-cover" 
-                    src={profileData.photoURL || user?.photoURL || AVATAR_NAV} 
-                    alt="Profile" 
-                    referrerPolicy="no-referrer"
-                  />
+              <div className="flex-1 overflow-y-auto no-scrollbar -mx-2 px-2 space-y-8">
+                <div className="flex flex-col items-center p-6 bg-surface-container-low rounded-3xl border border-outline-variant/10">
+                  <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-primary/20 mb-4">
+                    <img 
+                      className="w-full h-full object-cover" 
+                      src={profileData.photoURL || user?.photoURL || AVATAR_NAV} 
+                      alt="Profile" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <p className="font-serif text-lg text-center truncate w-full">{profileData.displayName || user?.displayName || 'User'}</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-outline truncate w-full text-center">{user?.email}</p>
                 </div>
-                <p className="font-serif text-lg text-center truncate w-full">{profileData.displayName || user?.displayName || 'User'}</p>
-                <p className="text-[10px] uppercase tracking-widest font-bold text-outline truncate w-full text-center">{user?.email}</p>
-              </div>
 
-              <div className="space-y-2 flex-1">
-                <button 
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    setIsProfileModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
-                >
-                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                    <Settings className="w-5 h-5 text-primary" />
-                  </div>
-                  <span className="font-bold text-sm">Edit Profile</span>
-                </button>
-
-                <button 
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    setToast("Preferences coming soon!");
-                  }}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
-                >
-                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                    <Palette className="w-5 h-5 text-primary" />
-                  </div>
-                  <span className="font-bold text-sm">Appearance</span>
-                </button>
-
-                <button 
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    setIsRelationshipModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
-                >
-                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                    <History className="w-5 h-5 text-primary" />
-                  </div>
-                  <span className="font-bold text-sm">Relationship</span>
-                </button>
-
-                <div className="pt-4 px-4">
-                  <div className="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
-                    <div className="flex items-center gap-3">
-                      {theme === 'dark' ? <Moon className="w-4 h-4 text-primary" /> : <Sun className="w-4 h-4 text-primary" />}
-                      <span className="text-xs font-bold uppercase tracking-widest text-outline">Theme</span>
+                <div className="space-y-2">
+                  <button 
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsProfileModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                  >
+                    <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                      <Settings className="w-5 h-5 text-primary" />
                     </div>
-                    <button 
-                      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                      className="relative w-12 h-6 bg-surface-container-highest rounded-full p-1 transition-colors"
-                    >
-                      <motion.div 
-                        animate={{ x: theme === 'dark' ? 24 : 0 }}
-                        className="w-4 h-4 bg-primary rounded-full"
-                      />
-                    </button>
+                    <span className="font-bold text-sm">Edit Profile</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setToast("Preferences coming soon!");
+                    }}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                  >
+                    <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                      <Palette className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className="font-bold text-sm">Appearance</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsRelationshipModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                  >
+                    <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                      <History className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className="font-bold text-sm">Relationship</span>
+                  </button>
+
+                  <div className="pt-6 px-4">
+                    <div className="p-5 bg-surface-container-low/50 backdrop-blur-xl rounded-3xl border border-outline-variant/10 shadow-inner">
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-primary/10 rounded-xl">
+                            <Palette className="w-4 h-4 text-primary" />
+                          </div>
+                          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-outline">Appearance</span>
+                        </div>
+                        <span className="text-[8px] font-mono text-outline/40 uppercase tracking-widest">v1.2</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-2 bg-surface-container-highest/30 rounded-2xl p-1.5 border border-outline-variant/5">
+                        {[
+                          { id: 'light', icon: Sun, label: 'Light' },
+                          { id: 'system', icon: Monitor, label: 'Auto' },
+                          { id: 'dark', icon: Moon, label: 'Dark' }
+                        ].map((option) => (
+                          <button
+                            key={option.id}
+                            onClick={() => setTheme(option.id as any)}
+                            className={`relative flex flex-col items-center justify-center gap-2 py-3 rounded-xl transition-all duration-500 overflow-hidden group ${
+                              theme === option.id 
+                                ? 'text-on-primary-fixed' 
+                                : 'text-outline hover:text-on-surface hover:bg-white/5'
+                            }`}
+                          >
+                            {theme === option.id && (
+                              <motion.div 
+                                layoutId="activeTheme"
+                                className="absolute inset-0 bg-gradient-to-br from-primary to-primary-container shadow-lg shadow-primary/20"
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                              />
+                            )}
+                            <option.icon className={`w-4 h-4 relative z-10 transition-transform duration-500 ${theme === option.id ? 'scale-110' : 'group-hover:scale-110'}`} />
+                            <span className="text-[9px] font-bold uppercase tracking-wider relative z-10">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
