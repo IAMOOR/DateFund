@@ -1166,12 +1166,16 @@ export default function App() {
               exit={{ y: "100%" }}
               className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
             >
-              <div className="flex justify-between items-center mb-8">
+              <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl font-serif">Join Shared Event</h3>
                 <button onClick={() => setIsJoinEventModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               </div>
+              
+              <p className="text-outline text-xs mb-8 leading-relaxed">
+                Enter the unique Event ID shared by your partner to collaborate on planning and RSVP to the date.
+              </p>
               
               <form onSubmit={handleJoinEvent} className="space-y-6">
                 <div className="space-y-1">
@@ -1539,99 +1543,120 @@ export default function App() {
                   />
                 ) : (
                   sortedEvents.length > 0 ? (
-                    sortedEvents.map((event, idx) => (
-                      <motion.div 
-                        key={event.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: idx * 0.05 }}
-                        whileHover={{ scale: 1.01, y: -2 }}
-                        className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/10 relative group shadow-sm hover:shadow-md transition-all duration-300"
-                      >
-                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <motion.button 
-                            whileHover={{ scale: 1.1, rotate: 15 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => {
-                              setEditingEvent(event);
-                              setIsEventModalOpen(true);
-                            }}
-                            className="p-2 text-outline hover:text-primary transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </motion.button>
-                          <motion.button 
-                            whileHover={{ scale: 1.1, rotate: -15 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => deleteEvent(event.id)}
-                            className="p-2 text-outline hover:text-error transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </motion.button>
-                        </div>
-                        <div className="flex gap-4">
-                          <div className="flex flex-col items-center justify-center bg-primary/10 rounded-xl px-4 py-2 h-fit">
-                            <span className="text-[10px] uppercase font-bold text-primary">
-                              {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
-                            </span>
-                            <span className="text-2xl font-serif text-primary">
-                              {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
-                            </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {sortedEvents.map((event, idx) => (
+                        <motion.div 
+                          key={event.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: idx * 0.05 }}
+                          whileHover={{ scale: 1.01, y: -2 }}
+                          className="bg-surface-container-low rounded-3xl p-6 border border-outline-variant/10 relative group shadow-sm hover:shadow-md transition-all duration-300"
+                        >
+                          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <motion.button 
+                              whileHover={{ scale: 1.1, rotate: 15 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(event.id);
+                                setToast("Event ID copied!");
+                              }}
+                              className="p-2 text-outline hover:text-primary transition-colors"
+                              title="Copy Event ID"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </motion.button>
+                            <motion.button 
+                              whileHover={{ scale: 1.1, rotate: 15 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => {
+                                setEditingEvent(event);
+                                setIsEventModalOpen(true);
+                              }}
+                              className="p-2 text-outline hover:text-primary transition-colors"
+                            >
+                              <Settings className="w-4 h-4" />
+                            </motion.button>
+                            <motion.button 
+                              whileHover={{ scale: 1.1, rotate: -15 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => deleteEvent(event.id)}
+                              className="p-2 text-outline hover:text-error transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </motion.button>
                           </div>
-                          <div className="space-y-2 flex-1">
-                            <h3 className="text-xl font-serif">{event.title}</h3>
-                            {event.tags && event.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {event.tags.map((tag, idx) => (
-                                  <span key={idx} className="text-[8px] uppercase tracking-tighter font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                                    {tag}
-                                  </span>
-                                ))}
+                          <div className="flex gap-6">
+                            <div className="flex flex-col items-center justify-center bg-primary/10 rounded-2xl px-5 py-3 h-fit border border-primary/20">
+                              <span className="text-[10px] uppercase font-bold text-primary tracking-widest">
+                                {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
+                              </span>
+                              <span className="text-3xl font-serif text-primary">
+                                {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="space-y-3 flex-1">
+                              <h3 className="text-2xl font-serif leading-tight">{event.title}</h3>
+                              {event.tags && event.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {event.tags.map((tag, idx) => (
+                                    <span key={idx} className="text-[8px] uppercase tracking-widest font-bold bg-primary/5 text-primary/80 px-2 py-1 rounded-full border border-primary/10">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {event.description && <p className="text-on-surface/70 text-sm line-clamp-2">{event.description}</p>}
+                              
+                              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 border-t border-outline-variant/5">
+                                {event.time && (
+                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <Clock className="w-3 h-3 text-primary" />
+                                    {event.time}
+                                  </div>
+                                )}
+                                {event.location && (
+                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <MapPin className="w-3 h-3 text-primary" />
+                                    {event.location}
+                                  </div>
+                                )}
+                                {user && event.rsvps && event.rsvps[user.uid] && (
+                                  <div className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${
+                                    event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
+                                    event.rsvps[user.uid] === 'Maybe' ? 'text-primary' : 'text-error'
+                                  }`}>
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      event.rsvps[user.uid] === 'Going' ? 'bg-secondary' : 
+                                      event.rsvps[user.uid] === 'Maybe' ? 'bg-primary' : 'bg-error'
+                                    }`} />
+                                    RSVP: {event.rsvps[user.uid]}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {event.description && <p className="text-on-surface/70 text-sm">{event.description}</p>}
-                            <div className="flex flex-wrap gap-4 pt-2">
-                              {user && event.rsvps && event.rsvps[user.uid] && (
-                                <div className={`flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold ${
-                                  event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
-                                  event.rsvps[user.uid] === 'Maybe' ? 'text-primary' : 'text-error'
-                                }`}>
-                                  RSVP: {event.rsvps[user.uid]}
-                                </div>
-                              )}
-                              {event.time && (
-                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
-                                  <Clock className="w-3 h-3" /> {event.time}
-                                </div>
-                              )}
-                              {event.location && (
-                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-outline">
-                                  <MapPin className="w-3 h-3" /> {event.location}
-                                </div>
-                              )}
-                              {event.reminder && (
-                                <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-secondary">
-                                  <Bell className="w-3 h-3" /> Reminder Set
-                                </div>
-                              )}
                             </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    ))
+                        </motion.div>
+                      ))}
+                    </div>
                   ) : (
-                    <div className="py-20 text-center border-2 border-dashed border-outline-variant/20 rounded-3xl space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-surface-container mx-auto flex items-center justify-center">
-                        <Calendar className="w-8 h-8 text-outline/30" />
+                    <motion.div 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="py-20 text-center bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20"
+                    >
+                      <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Calendar className="w-10 h-10 text-primary opacity-50" />
                       </div>
-                      <p className="text-outline italic">No dates planned yet. Start dreaming together.</p>
+                      <h3 className="text-2xl font-serif mb-2">No dates planned yet</h3>
+                      <p className="text-outline text-sm mb-8 max-w-xs mx-auto">Your romantic journey is a blank canvas. Start planning your next bloom today.</p>
                       <button 
                         onClick={() => setIsEventModalOpen(true)}
-                        className="text-primary font-bold uppercase tracking-widest text-xs"
+                        className="bg-primary text-on-primary-fixed px-8 py-4 rounded-full font-bold shadow-lg shadow-primary/20 active:scale-95 transition-transform"
                       >
-                        Add First Event
+                        Schedule Your First Date
                       </button>
-                    </div>
+                    </motion.div>
                   )
                 )}
               </div>

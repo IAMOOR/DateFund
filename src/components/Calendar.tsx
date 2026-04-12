@@ -51,8 +51,7 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
   }, [currentMonth]);
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, -1)); // Wait, subMonths takes positive number to subtract
-  const prevMonthFixed = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   const getEventsForDay = (day: Date) => {
     return events.filter(event => isSameDay(parseISO(event.date), day));
@@ -67,7 +66,7 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
         </h3>
         <div className="flex gap-2">
           <button 
-            onClick={prevMonthFixed}
+            onClick={prevMonth}
             className="p-2 hover:bg-surface-container-highest rounded-full transition-colors text-outline"
           >
             <ChevronLeft className="w-5 h-5" />
