@@ -823,14 +823,15 @@ export default function App() {
       const goalsContext = goals.map(g => `${g.name} (Target: R ${g.targetAmount})`).join(', ');
       const eventsContext = events.map(e => `${e.title} (${e.tags?.join(', ') || 'no tags'})`).join(', ');
 
-      const prompt = `Based on these financial goals: [${goalsContext}] and these past/planned events: [${eventsContext}], suggest ONE creative and romantic date idea. 
+      const systemInstruction = `Based on these financial goals: [${goalsContext}] and these past/planned events: [${eventsContext}], suggest ONE creative and romantic date idea.
       The idea should be realistic and align with the goals (e.g., if they are saving for a big trip, suggest a low-cost but high-romance local date; if they have a "Fine Dining" goal, suggest a fancy restaurant idea).
       Return the response as a JSON object with 'title', 'description', and 'tags' (array of strings).`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: "Suggest a date idea",
         config: {
+          systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -844,7 +845,13 @@ export default function App() {
         }
       });
 
-      const idea = JSON.parse(response.text);
+      let idea;
+      try {
+        idea = JSON.parse(response.text || '{}');
+      } catch (parseError) {
+        console.error("Failed to parse AI suggestion as JSON", parseError, response.text);
+        throw new Error("Invalid response format");
+      }
       setSuggestedIdea(idea);
       setIsSuggestionModalOpen(true);
     } catch (err) {
@@ -2789,21 +2796,41 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
     if (!finalQuery && !location) return;
     setLoading(true);
     try {
-      const prompt = location 
-        ? `Find romantic date spots or places related to "${finalQuery || 'romantic spots'}" near coordinates ${location.lat}, ${location.lng}. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`
-        : `Find romantic date spots or places related to "${finalQuery}" in South Africa. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`;
+      const systemInstruction = location
+        ? `Find romantic date spots or places related to the user's query near coordinates ${location.lat}, ${location.lng}. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`
+        : `Find romantic date spots or places related to the user's query in South Africa. Return a JSON array of objects with name, address, rating, and description. Do not include any other text, only the JSON array.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: finalQuery || 'romantic spots',
         config: { 
-          tools: [{ googleMaps: {} }]
+          systemInstruction,
+          tools: [{ googleMaps: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                address: { type: Type.STRING },
+                rating: { type: Type.NUMBER },
+                description: { type: Type.STRING }
+              },
+              required: ["name", "address", "rating", "description"]
+            }
+          }
         }
       });
       
       const text = response.text || '';
       const cleanText = text.replace(/```json\n?|```/g, '').trim();
-      const data = JSON.parse(cleanText);
+      let data = [];
+      try {
+        data = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error("Failed to parse AI response as JSON", parseError, cleanText);
+      }
       setResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Maps search failed", error);
@@ -2892,17 +2919,29 @@ function DiscoverView({ location, goals, events }: {
         ? `The user is saving for: ${goals.map(g => g.name).join(', ')}.` 
         : '';
       
-      const prompt = `You are a romantic date and travel expert. 
+      const systemInstruction = `You are a romantic date and travel expert.
         ${goalsContext}
         Based on these goals, suggest 4 short, catchy search queries (2-4 words each) for date ideas or travel destinations.
         Return a JSON array of strings.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+        contents: "Suggest search queries",
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
       });
-      const data = JSON.parse(response.text);
+      let data = [];
+      try {
+        data = JSON.parse(response.text || '[]');
+      } catch (parseError) {
+        console.error("Failed to parse AI response as JSON", parseError, response.text);
+      }
       setSuggestions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Suggestions failed", error);
@@ -2923,22 +2962,42 @@ function DiscoverView({ location, goals, events }: {
         ? `The user has planned: ${events.map(e => e.title).join(', ')}.` 
         : '';
 
-      const prompt = `You are a romantic date and travel concierge. 
+      const systemInstruction = `You are a romantic date and travel concierge.
         ${goalsContext} ${eventsContext}
-        Based on these interests and the search "${finalQuery || 'unique date ideas'}", 
+        Based on these interests and the user's search query,
         provide 5 personalized, high-quality recommendations. 
         ${location ? `Prioritize locations near ${location.lat}, ${location.lng} if relevant.` : ''}
         Return a JSON array of objects with title, source, summary, and a descriptive imageSearchTerm for finding a relevant photo.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: finalQuery || 'unique date ideas',
         config: { 
+          systemInstruction,
           tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json" 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                source: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                imageSearchTerm: { type: Type.STRING }
+              },
+              required: ["title", "source", "summary", "imageSearchTerm"]
+            }
+          }
         }
       });
-      const data = JSON.parse(response.text);
+
+      let data = [];
+      try {
+        data = JSON.parse(response.text || '[]');
+      } catch (parseError) {
+        console.error("Failed to parse AI response as JSON", parseError, response.text);
+      }
       setResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Search failed", error);
