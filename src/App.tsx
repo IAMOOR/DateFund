@@ -34,7 +34,8 @@ import {
   Loader2,
   Monitor,
   Sun,
-  Moon
+  Moon,
+  HeartOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarComponent from './components/Calendar';
@@ -135,6 +136,7 @@ export default function App() {
   });
   const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
   const [isJoinEventModalOpen, setIsJoinEventModalOpen] = useState(false);
+  const [isBreakUpConfirmOpen, setIsBreakUpConfirmOpen] = useState(false);
   const [plannerMode, setPlannerMode] = useState<'list' | 'calendar'>('calendar');
   const [plannerSort, setPlannerSort] = useState<'date' | 'time' | 'title'>('date');
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -317,8 +319,8 @@ export default function App() {
         // Browser Notification if possible
         if ("Notification" in window && Notification.permission === "granted") {
           upcoming.forEach(event => {
-            new Notification(`DateFund Reminder: ${event.title}`, {
-              body: `Event at ${event.time || 'today'}! ${event.location ? `at ${event.location}` : ''}`,
+            new Notification(`DateFund Task Reminder: ${event.title}`, {
+              body: `Task at ${event.time || 'today'}! ${event.location ? `at ${event.location}` : ''}`,
             });
           });
         }
@@ -744,7 +746,7 @@ export default function App() {
     try {
       await deleteDoc(doc(db, 'events', eventToDelete));
       setEventToDelete(null);
-      setToast("Event deleted successfully.");
+      setToast("Task deleted successfully.");
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `events/${eventToDelete}`);
     }
@@ -864,7 +866,7 @@ export default function App() {
       const eventSnap = await getDoc(eventRef);
       
       if (!eventSnap.exists()) {
-        setToast("Event not found. Check the ID.");
+        setToast("Task not found. Check the ID.");
         return;
       }
 
@@ -880,7 +882,7 @@ export default function App() {
         rsvps: { ...eventData.rsvps, [user.uid]: 'Going' }
       }, { merge: true });
 
-      setToast("Joined event successfully!");
+      setToast("Joined task successfully!");
       setJoinEventId('');
       setIsJoinEventModalOpen(false);
     } catch (err) {
@@ -1210,23 +1212,23 @@ export default function App() {
               className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-serif">Join Shared Event</h3>
+                <h3 className="text-2xl font-serif">Join Shared Task</h3>
                 <button onClick={() => setIsJoinEventModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               </div>
               
               <p className="text-outline text-xs mb-8 leading-relaxed">
-                Enter the unique Event ID shared by your partner to collaborate on planning and RSVP to the date.
+                Enter the unique Task ID shared by your partner to collaborate on planning and RSVP to the date.
               </p>
               
               <form onSubmit={handleJoinEvent} className="space-y-6">
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Event ID</label>
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Task ID</label>
                   <input 
                     autoFocus
                     type="text" 
-                    placeholder="Paste event ID here..."
+                    placeholder="Paste task ID here..."
                     className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-mono text-sm"
                     value={joinEventId}
                     onChange={e => setJoinEventId(e.target.value)}
@@ -1237,7 +1239,7 @@ export default function App() {
                   type="submit"
                   className="w-full bg-primary text-on-primary-fixed py-4 rounded-full font-bold active:scale-95 transition-transform"
                 >
-                  Join Event
+                  Join Task
                 </button>
               </form>
             </motion.div>
@@ -1269,35 +1271,84 @@ export default function App() {
               exit={{ opacity: 0, x: 20 }}
             >
               {/* Hero Section */}
-              <section className="mb-12 space-y-2">
-                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-outline">Total Balance</span>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <h2 className="text-5xl font-serif text-on-surface">R {totalBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</h2>
-                  <span className="text-secondary font-medium text-sm">+ R 120.00 this week</span>
+              <div className="mb-12 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] bg-surface-container-low/30 backdrop-blur-3xl border border-white/5 relative overflow-hidden group shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)]">
+                <div className="absolute -top-32 -right-32 w-80 h-80 bg-primary/10 rounded-full blur-[100px] group-hover:bg-primary/20 transition-colors duration-1000" />
+                <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-secondary/5 rounded-full blur-[80px]" />
+                
+                <div className="relative z-10 space-y-6 sm:space-y-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-primary/10 rounded-2xl border border-primary/10 backdrop-blur-md">
+                        <PiggyBank className="w-6 h-6 text-primary" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase tracking-[0.4em] font-bold text-outline/60">Total Balance</span>
+                        <span className="text-[9px] text-primary/60 font-medium italic">Shared Date Fund</span>
+                      </div>
+                    </div>
+                    <div className="flex -space-x-4 self-end sm:self-auto">
+                      <motion.img 
+                        whileHover={{ y: -5, zIndex: 20 }}
+                        src={AVATAR_ME} 
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-surface-container-high object-cover shadow-lg" 
+                        alt="Me" 
+                      />
+                      <motion.img 
+                        whileHover={{ y: -5, zIndex: 20 }}
+                        src={AVATAR_THEM} 
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-surface-container-high object-cover shadow-lg" 
+                        alt="Them" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-baseline gap-2 overflow-hidden">
+                      <span className="text-xl sm:text-3xl font-serif text-primary/40">R</span>
+                      <h2 className="text-4xl sm:text-7xl font-serif text-on-surface tracking-tighter leading-none truncate">
+                        {totalBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </h2>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-2 text-secondary bg-secondary/10 px-4 py-1.5 rounded-full text-[10px] font-bold border border-secondary/10 backdrop-blur-md w-fit"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>+ R 120.00 this week</span>
+                      </motion.div>
+                      <div className="hidden sm:block h-px flex-1 bg-gradient-to-r from-outline/10 to-transparent" />
+                      <span className="text-[10px] text-outline/30 font-bold uppercase tracking-[0.2em]">Active Growth</span>
+                    </div>
+                  </div>
                 </div>
-              </section>
+              </div>
 
               {/* Current Primary Goal */}
               {goals.length > 0 && (
                 <motion.div 
                   layoutId={goals[0].id}
-                  whileHover={{ scale: 1.01 }}
-                  className="relative overflow-hidden bg-surface-container rounded-2xl p-8 mb-10 group shadow-lg hover:shadow-2xl transition-all duration-500 glass-highlight"
+                  whileHover={{ scale: 1.01, y: -4 }}
+                  className="relative overflow-hidden bg-surface-container-low/20 backdrop-blur-xl rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-10 mb-12 group shadow-xl border border-white/5 transition-all duration-500"
                 >
-                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/10 rounded-full blur-3xl transition-transform group-hover:scale-150 duration-700"></div>
-                  <div className="flex justify-between items-end mb-6 relative z-10">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Primary Dream</span>
-                        <span className="text-[8px] bg-surface-container-highest px-2 py-0.5 rounded text-outline font-mono">ID: {goals[0].id}</span>
+                  <div className="absolute -top-16 -right-16 w-40 h-40 bg-primary/5 rounded-full blur-3xl transition-transform group-hover:scale-150 duration-1000"></div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-6 mb-8 relative z-10">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary/60">Primary Dream</span>
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded-md border border-white/5">
+                          <div className="w-1 h-1 rounded-full bg-primary/40 animate-pulse" />
+                          <span className="text-[8px] text-outline/40 font-mono tracking-tighter">ID: {goals[0].id}</span>
+                        </div>
                       </div>
-                      <h3 className="text-2xl font-serif">{goals[0].name}</h3>
+                      <h3 className="text-2xl sm:text-3xl font-serif leading-none">{goals[0].name}</h3>
                     </div>
-                    <div className="bg-secondary-container/20 text-secondary px-3 py-1 rounded-full text-xs font-bold">
+                    <div className="bg-secondary-container/10 text-secondary px-4 py-2 rounded-2xl text-xs font-bold border border-secondary/10 backdrop-blur-md w-fit">
                       R {goals[0].targetAmount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
-                  <div className="relative h-6 w-full bg-surface-container-high/50 rounded-full overflow-hidden mb-4 border border-outline-variant/5 group/progress">
+                  <div className="relative h-6 w-full bg-surface-container-high/50 rounded-full overflow-hidden mb-6 border border-outline-variant/5 group/progress">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min((goals[0].currentAmount / goals[0].targetAmount) * 100, 100)}%` }}
@@ -1317,14 +1368,20 @@ export default function App() {
                       />
                     </motion.div>
                   </div>
-                  <div className="flex justify-between items-center text-[10px] uppercase tracking-[0.2em] font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="text-secondary">{((goals[0].currentAmount / goals[0].targetAmount) * 100).toFixed(1)}%</span>
-                      <span className="text-outline/40">Accomplished</span>
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-6 text-[10px] uppercase tracking-[0.2em] font-bold">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-outline/30 text-[8px]">Progress</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-secondary text-base sm:text-lg leading-none">{((goals[0].currentAmount / goals[0].targetAmount) * 100).toFixed(1)}%</span>
+                        <span className="text-outline/40">Accomplished</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-outline/40">Remaining:</span>
-                      <span className="text-primary">R {Math.max(0, goals[0].targetAmount - goals[0].currentAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                    <div className="flex flex-col sm:items-end gap-1">
+                      <span className="text-outline/30 text-[8px]">To Go</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-outline/40">Remaining:</span>
+                        <span className="text-primary text-base sm:text-lg leading-none">R {Math.max(0, goals[0].targetAmount - goals[0].currentAmount).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -1372,7 +1429,7 @@ export default function App() {
                         </div>
                         <button 
                           onClick={() => deleteGoal(goal.id)}
-                          className="p-2 text-outline hover:text-error transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 text-outline hover:text-error transition-colors sm:opacity-0 sm:group-hover:opacity-100"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1516,13 +1573,13 @@ export default function App() {
               <div className="flex justify-between items-center">
                 <div className="space-y-1">
                   <h2 className="text-3xl font-serif">Planner</h2>
-                  <p className="text-outline text-sm">Schedule your next romantic escape.</p>
+                  <p className="text-outline text-sm">Schedule your next romantic task idea.</p>
                 </div>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => setIsJoinEventModalOpen(true)}
                     className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors"
-                    title="Join Shared Event"
+                    title="Join Shared Task"
                   >
                     <Share2 className="w-5 h-5" />
                   </button>
@@ -1580,6 +1637,7 @@ export default function App() {
                       setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
                       setIsEventModalOpen(true);
                     }}
+                    title="New Task"
                     className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-lg transition-all hover:shadow-primary/20"
                   >
                     <Plus className="w-6 h-6" />
@@ -1612,18 +1670,18 @@ export default function App() {
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: idx * 0.05 }}
                           whileHover={{ scale: 1.01, y: -2 }}
-                          className="bg-surface-container-low rounded-3xl p-6 border border-outline-variant/10 relative group shadow-sm hover:shadow-md transition-all duration-300"
+                          className="bg-surface-container-low rounded-[2rem] p-6 sm:p-8 border border-outline-variant/10 relative group shadow-sm hover:shadow-xl transition-all duration-500"
                         >
-                          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute top-6 right-6 flex sm:flex-col gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 z-10">
                             <motion.button 
                               whileHover={{ scale: 1.1, rotate: 15 }}
                               whileTap={{ scale: 0.9 }}
                               onClick={() => {
                                 navigator.clipboard.writeText(event.id);
-                                setToast("Event ID copied!");
+                                setToast("Task ID copied!");
                               }}
                               className="p-2 text-outline hover:text-primary transition-colors"
-                              title="Copy Event ID"
+                              title="Copy Task ID"
                             >
                               <Share2 className="w-4 h-4" />
                             </motion.button>
@@ -1647,57 +1705,60 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </motion.button>
                           </div>
-                          <div className="flex gap-6">
-                            <div className="flex flex-col items-center justify-center bg-primary/10 rounded-2xl px-5 py-3 h-fit border border-primary/20">
-                              <span className="text-[10px] uppercase font-bold text-primary tracking-widest">
+                          <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
+                            <div className="flex flex-row sm:flex-col items-center justify-center bg-primary/10 rounded-2xl px-6 py-4 sm:py-6 h-fit border border-primary/20 min-w-[80px] sm:min-w-[100px] shadow-inner">
+                              <span className="text-[10px] sm:text-xs uppercase font-bold text-primary tracking-[0.2em] sm:mb-1 mr-2 sm:mr-0">
                                 {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
                               </span>
-                              <span className="text-3xl font-serif text-primary">
+                              <span className="text-3xl sm:text-4xl font-serif text-primary">
                                 {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
                               </span>
                             </div>
-                            <div className="space-y-3 flex-1">
-                              <h3 className="text-2xl font-serif leading-tight">{event.title}</h3>
-                              {event.tags && event.tags.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                  {event.tags.map((tag, idx) => (
-                                    <span key={idx} className="text-[8px] uppercase tracking-widest font-bold bg-primary/5 text-primary/80 px-2 py-1 rounded-full border border-primary/10">
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {event.description && <p className="text-on-surface/70 text-sm line-clamp-2">{event.description}</p>}
+                            <div className="space-y-4 flex-1 pr-0 sm:pr-8">
+                              <div className="space-y-2">
+                                <h3 className="text-2xl sm:text-3xl font-serif leading-tight tracking-tight text-on-surface">{event.title}</h3>
+                                {event.tags && event.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {event.tags.map((tag, idx) => (
+                                      <span key={idx} className="text-[9px] uppercase tracking-widest font-bold bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/20">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                               
-                              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 border-t border-outline-variant/5">
+                              {event.description && <p className="text-on-surface/70 text-sm sm:text-base leading-relaxed line-clamp-3">{event.description}</p>}
+                              
+                              <div className="flex flex-wrap gap-x-8 gap-y-3 pt-4 border-t border-outline-variant/10">
                                 {event.time && (
-                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
-                                    <Clock className="w-3 h-3 text-primary" />
-                                    {event.time}
+                                  <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <Clock className="w-3.5 h-3.5 text-primary/60" />
+                                    <span>{event.time}</span>
                                   </div>
                                 )}
                                 {event.location && (
-                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
-                                    <MapPin className="w-3 h-3 text-primary" />
-                                    {event.location}
+                                  <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <MapPin className="w-3.5 h-3.5 text-primary/60" />
+                                    <span>{event.location}</span>
                                   </div>
                                 )}
                                 {event.goalId && goals.find(g => g.id === event.goalId) && (
-                                  <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
-                                    <History className="w-3 h-3 text-primary" />
-                                    {goals.find(g => g.id === event.goalId)?.name}
+                                  <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
+                                    <History className="w-3.5 h-3.5 text-primary/60" />
+                                    <span>{goals.find(g => g.id === event.goalId)?.name}</span>
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
-                                  <div className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${
+                                  <div className={`flex items-center gap-2.5 text-[10px] uppercase tracking-widest font-bold ${
                                     event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
                                     event.rsvps[user.uid] === 'Maybe' ? 'text-primary' : 'text-error'
                                   }`}>
-                                    <div className={`w-2 h-2 rounded-full ${
+                                    <div className={`w-2.5 h-2.5 rounded-full shadow-sm ${
                                       event.rsvps[user.uid] === 'Going' ? 'bg-secondary' : 
                                       event.rsvps[user.uid] === 'Maybe' ? 'bg-primary' : 'bg-error'
                                     }`} />
-                                    RSVP: {event.rsvps[user.uid]}
+                                    <span>RSVP: {event.rsvps[user.uid]}</span>
                                   </div>
                                 )}
                               </div>
@@ -2043,7 +2104,7 @@ export default function App() {
               className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-serif">{editingEvent ? 'Edit Event' : 'Plan an Event'}</h3>
+                <h3 className="text-2xl font-serif">{editingEvent ? 'Edit Task' : 'Plan a Task'}</h3>
                 <button onClick={() => setIsEventModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                   <X className="w-6 h-6" />
                 </button>
@@ -2284,7 +2345,7 @@ export default function App() {
 
                 {editingEvent && (
                   <div className="p-4 bg-surface-container-highest rounded-2xl space-y-2">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-outline">Share Event ID</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-outline">Share Task ID</p>
                     <code className="block w-full bg-black/20 p-2 rounded text-xs font-mono break-all select-all">
                       {editingEvent.id}
                     </code>
@@ -2308,7 +2369,7 @@ export default function App() {
                     type="submit"
                     className="flex-[2] bg-primary text-on-primary-fixed py-4 rounded-full font-bold active:scale-95 transition-transform"
                   >
-                    {editingEvent ? 'Update Event' : 'Schedule Event'}
+                    {editingEvent ? 'Update Task' : 'Schedule Task'}
                   </button>
                 </div>
               </form>
@@ -2354,7 +2415,7 @@ export default function App() {
                   </div>
                   
                   <button 
-                    onClick={handleBreakUp}
+                    onClick={() => setIsBreakUpConfirmOpen(true)}
                     className="w-full bg-error/10 text-error py-4 rounded-full font-bold flex items-center justify-center gap-2 hover:bg-error/20 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -2569,9 +2630,9 @@ export default function App() {
               <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Trash2 className="w-8 h-8 text-error" />
               </div>
-              <h3 className="text-2xl font-serif text-on-surface mb-2">Delete this Event?</h3>
+              <h3 className="text-2xl font-serif text-on-surface mb-2">Delete this Task?</h3>
               <p className="text-on-surface/80 text-sm leading-relaxed mb-8">
-                Are you sure you want to delete this event? This action cannot be undone.
+                Are you sure you want to delete this task? This action cannot be undone.
               </p>
               
               <div className="flex gap-4">
@@ -2585,7 +2646,7 @@ export default function App() {
                   onClick={confirmDeleteEvent}
                   className="flex-[2] bg-error text-white py-4 rounded-full font-bold shadow-lg shadow-error/20 active:scale-95 transition-transform"
                 >
-                  Delete Event
+                  Delete Task
                 </button>
               </div>
             </motion.div>
@@ -2593,7 +2654,52 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Delete Goal Confirmation Modal */}
+      {/* End Relationship Confirmation Modal */}
+      <AnimatePresence>
+        {isBreakUpConfirmOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsBreakUpConfirmOpen(false)}
+              className="absolute inset-0 bg-background/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-surface-container rounded-3xl p-8 shadow-2xl border border-error/20 text-center"
+            >
+              <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <HeartOff className="w-8 h-8 text-error" />
+              </div>
+              <h3 className="text-2xl font-serif text-on-surface mb-2">End Shared Journey?</h3>
+              <p className="text-on-surface/80 text-sm leading-relaxed mb-8">
+                This will split all shared funds and archive your shared dreams. This action is significant and should be considered carefully.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => setIsBreakUpConfirmOpen(false)}
+                  className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors order-2 sm:order-1"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    handleBreakUp();
+                    setIsBreakUpConfirmOpen(false);
+                  }}
+                  className="flex-[2] bg-error text-white py-4 rounded-full font-bold shadow-lg shadow-error/20 active:scale-95 transition-transform order-1 sm:order-2"
+                >
+                  Yes, End Journey
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {goalToDelete && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -3057,19 +3163,25 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
     const generateImage = async () => {
       setIsGenerating(true);
       try {
-        const response = await ai.models.generateImages({
-          model: 'imagen-4.0-generate-001',
-          prompt: `A high-quality, professional editorial photograph of: ${idea.title}. ${idea.summary}. Style: Romantic, elegant, cinematic lighting, high resolution.`,
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+            parts: [
+              {
+                text: `A high-quality, professional editorial photograph of: ${idea.title}. ${idea.summary}. Style: Romantic, elegant, cinematic lighting, high resolution.`,
+              },
+            ],
+          },
           config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: '16:9',
+            imageConfig: {
+              aspectRatio: '16:9',
+            },
           },
         });
 
-        if (response.generatedImages?.[0]?.image?.imageBytes) {
-          const base64 = response.generatedImages[0].image.imageBytes;
-          setImageUrl(`data:image/jpeg;base64,${base64}`);
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+        if (imagePart?.inlineData?.data) {
+          setImageUrl(`data:image/png;base64,${imagePart.inlineData.data}`);
         } else {
           throw new Error("No image data returned");
         }
@@ -3142,25 +3254,28 @@ function ContributorCard({ name, amount, status, avatar, isActive = false }: {
 }) {
   return (
     <motion.div 
-      whileHover={{ scale: 1.02, y: -2 }}
+      whileHover={{ scale: 1.02, y: -4 }}
       whileTap={{ scale: 0.98 }}
-      className="bg-surface-container-low rounded-2xl p-6 flex items-center justify-between group hover:bg-surface-container transition-all duration-300 shadow-sm hover:shadow-md border border-outline-variant/5"
+      className="bg-surface-container-low/40 backdrop-blur-xl rounded-[2rem] p-6 flex items-center justify-between group hover:bg-surface-container/60 transition-all duration-500 shadow-xl border border-white/5"
     >
       <div className="flex items-center gap-4">
         <motion.div 
-          whileHover={{ rotate: 5 }}
-          className={`h-14 w-14 rounded-full overflow-hidden border-2 ${isActive ? 'border-primary/20' : 'border-outline-variant/20'}`}
+          whileHover={{ rotate: 10, scale: 1.1 }}
+          className={`h-16 w-16 rounded-2xl overflow-hidden border-2 ${isActive ? 'border-secondary/40 shadow-lg shadow-secondary/10' : 'border-outline-variant/20'}`}
         >
           <img className="w-full h-full object-cover" src={avatar} alt={name} referrerPolicy="no-referrer" />
         </motion.div>
-        <div>
-          <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Contributor</span>
-          <p className="font-serif text-lg">{name}</p>
+        <div className="space-y-1">
+          <span className="text-[9px] uppercase tracking-[0.3em] font-bold text-outline/40">Contributor</span>
+          <p className="font-serif text-xl leading-none">{name}</p>
         </div>
       </div>
-      <div className="text-right">
-        <p className="font-bold text-on-surface">{amount}</p>
-        <span className={`text-[10px] ${isActive ? 'text-secondary' : 'text-outline'}`}>{status}</span>
+      <div className="text-right space-y-1">
+        <p className="font-bold text-2xl text-on-surface tracking-tight">{amount}</p>
+        <div className="flex items-center justify-end gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-secondary animate-pulse' : 'bg-outline/20'}`} />
+          <span className={`text-[10px] font-bold uppercase tracking-widest ${isActive ? 'text-secondary' : 'text-outline/40'}`}>{status}</span>
+        </div>
       </div>
     </motion.div>
   );
