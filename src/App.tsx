@@ -816,6 +816,8 @@ export default function App() {
     });
   }, [events, plannerSort]);
 
+  const goalsMap = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
+
   const handleSuggestIdea = async () => {
     if (!user) return;
     setIsSuggesting(true);
@@ -1682,10 +1684,10 @@ export default function App() {
                                     {event.location}
                                   </div>
                                 )}
-                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                {event.goalId && goalsMap.get(event.goalId) && (
                                   <div className="flex items-center gap-2 text-outline text-[10px] font-bold uppercase tracking-widest">
                                     <History className="w-3 h-3 text-primary" />
-                                    {goals.find(g => g.id === event.goalId)?.name}
+                                    {goalsMap.get(event.goalId)?.name}
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
