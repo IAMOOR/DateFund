@@ -145,6 +145,13 @@ export default function App() {
   const [isSuggestionModalOpen, setIsSuggestionModalOpen] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   
+  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
+  const [isBreakUpSummaryOpen, setIsBreakUpSummaryOpen] = useState(false);
+  const [breakUpData, setBreakUpData] = useState<{ me: number, them: number, goalsAffected: number } | null>(null);
+  const [dailyAdvice, setDailyAdvice] = useState<string | null>(null);
+  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  const [soloDateIdea, setSoloDateIdea] = useState<{ title: string, description: string } | null>(null);
+  
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -585,6 +592,90 @@ export default function App() {
       setIsEventModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `events/${eventId}`);
+    }
+  };
+
+  const handleBreakUp = () => {
+    let meTotal = 0;
+    let themTotal = 0;
+    let affectedCount = 0;
+
+    goals.forEach(goal => {
+      if (goal.collaborators.length > 1) {
+        affectedCount++;
+        const goalTransactions = transactions.filter(t => t.goalId === goal.id);
+        goalTransactions.forEach(t => {
+          if (t.contributor === 'Me') meTotal += t.amount;
+          else themTotal += t.amount;
+        });
+      }
+    });
+
+    setBreakUpData({ me: meTotal, them: themTotal, goalsAffected: affectedCount });
+    setIsBreakUpSummaryOpen(true);
+    setIsRelationshipModalOpen(false);
+  };
+
+  const finalizeBreakUp = async () => {
+    if (!user) return;
+    try {
+      const sharedGoals = goals.filter(g => g.collaborators.length > 1);
+      for (const goal of sharedGoals) {
+        const goalTransactions = transactions.filter(t => t.goalId === goal.id);
+        for (const t of goalTransactions) {
+          await deleteDoc(doc(db, 'transactions', t.id));
+        }
+        await deleteDoc(doc(db, 'goals', goal.id));
+      }
+      setToast("Relationship ended. Funds split and shared dreams archived.");
+      setIsBreakUpSummaryOpen(false);
+    } catch (err) {
+      console.error("Break up failed", err);
+      setToast("Failed to finalize split.");
+    }
+  };
+
+  const getEncouragement = async () => {
+    setIsAdviceLoading(true);
+    try {
+      const prompt = "Give a short, uplifting word of encouragement or advice for someone who is focusing on their solo journey and financial independence after a breakup. Keep it under 20 words.";
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt
+      });
+      setDailyAdvice(response.text || "You are strong, capable, and your future is bright.");
+    } catch (error) {
+      setDailyAdvice("Focus on your growth; the best is yet to come.");
+    } finally {
+      setIsAdviceLoading(false);
+    }
+  };
+
+  const getSoloDateIdea = async () => {
+    setIsAdviceLoading(true);
+    try {
+      const prompt = "Suggest one creative and fulfilling solo date idea for someone focusing on self-love and independence. Return as JSON with 'title' and 'description'.";
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING }
+            },
+            required: ["title", "description"]
+          }
+        }
+      });
+      const idea = JSON.parse(response.text || '{}');
+      setSoloDateIdea(idea);
+    } catch (error) {
+      setToast("Failed to get solo date idea.");
+    } finally {
+      setIsAdviceLoading(false);
     }
   };
 
@@ -1614,6 +1705,19 @@ export default function App() {
                   <span className="font-bold text-sm">Appearance</span>
                 </button>
 
+                <button 
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsRelationshipModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                >
+                  <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                    <History className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="font-bold text-sm">Relationship</span>
+                </button>
+
                 <div className="pt-4 px-4">
                   <div className="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-3">
@@ -2081,6 +2185,238 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Relationship Modal */}
+      <AnimatePresence>
+        {isRelationshipModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsRelationshipModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              className="relative w-full max-w-md bg-surface-container rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-outline-variant/10"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-serif">Relationship Settings</h3>
+                <button onClick={() => setIsRelationshipModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="p-6 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="p-3 bg-primary/10 rounded-full">
+                      <History className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">Shared Journey</h4>
+                      <p className="text-xs text-outline">Manage your shared goals and contributions.</p>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={handleBreakUp}
+                    className="w-full bg-error/10 text-error py-4 rounded-full font-bold flex items-center justify-center gap-2 hover:bg-error/20 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    End Relationship
+                  </button>
+                </div>
+
+                <div className="p-6 bg-secondary/5 rounded-2xl border border-secondary/10">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="p-3 bg-secondary/10 rounded-full">
+                      <Sparkles className="w-6 h-6 text-secondary" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">Solo Growth</h4>
+                      <p className="text-xs text-outline">Get words of encouragement for your journey.</p>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={getEncouragement}
+                    disabled={isAdviceLoading}
+                    className="w-full bg-secondary text-on-secondary py-4 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
+                  >
+                    {isAdviceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sun className="w-4 h-4" />}
+                    Get Encouragement
+                  </button>
+
+                  <button 
+                    onClick={getSoloDateIdea}
+                    disabled={isAdviceLoading}
+                    className="w-full bg-surface-container-highest text-on-surface py-4 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50 mt-4"
+                  >
+                    {isAdviceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Utensils className="w-4 h-4" />}
+                    Solo Date Idea
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Solo Date Idea Modal */}
+      <AnimatePresence>
+        {soloDateIdea && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSoloDateIdea(null)}
+              className="absolute inset-0 bg-background/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-surface-container rounded-3xl p-8 shadow-2xl border border-secondary/20 text-center"
+            >
+              <div className="w-16 h-16 bg-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Utensils className="w-8 h-8 text-secondary" />
+              </div>
+              <h3 className="text-2xl font-serif text-secondary mb-2">{soloDateIdea.title}</h3>
+              <p className="text-on-surface/80 text-sm leading-relaxed mb-8">{soloDateIdea.description}</p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setSoloDateIdea(null)}
+                  className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors"
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={() => {
+                    setEditingEvent(null);
+                    setNewEvent({
+                      title: soloDateIdea.title,
+                      description: soloDateIdea.description,
+                      date: new Date().toISOString().split('T')[0],
+                      time: '18:00',
+                      location: '',
+                      reminder: true,
+                      reminderMinutes: 60,
+                      tags: ['Solo', 'Self-Love']
+                    });
+                    setSoloDateIdea(null);
+                    setIsRelationshipModalOpen(false);
+                    setIsEventModalOpen(true);
+                  }}
+                  className="flex-[2] bg-secondary text-on-secondary py-4 rounded-full font-bold shadow-lg shadow-secondary/20 active:scale-95 transition-transform"
+                >
+                  Plan This Solo Date
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Break Up Summary Modal */}
+      <AnimatePresence>
+        {isBreakUpSummaryOpen && breakUpData && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-background/95 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-surface-container rounded-3xl p-8 shadow-2xl border border-error/20"
+            >
+              <div className="text-center mb-8">
+                <div className="w-20 h-20 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ArrowUpDown className="w-10 h-10 text-error" />
+                </div>
+                <h3 className="text-3xl font-serif text-error mb-2">Fair Split Summary</h3>
+                <p className="text-outline text-sm">Here is how the shared funds will be distributed based on contributions.</p>
+              </div>
+
+              <div className="space-y-4 mb-8">
+                <div className="flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full overflow-hidden border border-primary/20">
+                      <img src={AVATAR_ME} alt="Me" className="w-full h-full object-cover" />
+                    </div>
+                    <span className="font-bold">Your Share</span>
+                  </div>
+                  <span className="text-xl font-serif text-primary">R {breakUpData.me.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div className="flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full overflow-hidden border border-outline-variant/20">
+                      <img src={AVATAR_THEM} alt="Them" className="w-full h-full object-cover" />
+                    </div>
+                    <span className="font-bold">Partner's Share</span>
+                  </div>
+                  <span className="text-xl font-serif text-outline">R {breakUpData.them.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div className="p-4 bg-error/5 rounded-2xl border border-error/10 text-center">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-error">Dreams Affected</p>
+                  <p className="text-2xl font-serif">{breakUpData.goalsAffected} Shared Goals</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsBreakUpSummaryOpen(false)}
+                  className="flex-1 py-4 rounded-full font-bold text-outline hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={finalizeBreakUp}
+                  className="flex-[2] bg-error text-white py-4 rounded-full font-bold shadow-lg shadow-error/20 active:scale-95 transition-transform"
+                >
+                  Finalize Split
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Encouragement Popup */}
+      <AnimatePresence>
+        {dailyAdvice && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 pointer-events-none">
+            <motion.div 
+              initial={{ y: 50, opacity: 0, scale: 0.9 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: -50, opacity: 0, scale: 0.9 }}
+              className="bg-secondary text-on-secondary p-8 rounded-3xl shadow-2xl border border-white/20 max-w-sm pointer-events-auto text-center relative overflow-hidden"
+            >
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
+              <Sparkles className="w-10 h-10 mx-auto mb-4 opacity-50" />
+              <h4 className="text-2xl font-serif mb-4">A Word for You</h4>
+              <p className="text-lg italic leading-relaxed mb-6 font-medium">"{dailyAdvice}"</p>
+              <button 
+                onClick={() => setDailyAdvice(null)}
+                className="w-full bg-white/20 hover:bg-white/30 py-3 rounded-full font-bold text-xs uppercase tracking-widest transition-colors"
+              >
+                Keep Going
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Profile Settings Modal */}
       <AnimatePresence>
         {isProfileModalOpen && (
@@ -2202,12 +2538,12 @@ export default function App() {
       </AnimatePresence>
 
       {/* Bottom Navigation (Mobile) */}
-      <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-surface/60 backdrop-blur-md rounded-t-2xl md:hidden">
-        <NavItem icon={<Home className="w-6 h-6" fill={view === 'home' ? "currentColor" : "none"} />} label="Home" active={view === 'home'} onClick={() => setView('home')} />
-        <NavItem icon={<Compass className="w-6 h-6" />} label="Discover" active={view === 'discover'} onClick={() => setView('discover')} />
-        <NavItem icon={<MapIcon className="w-6 h-6" />} label="Map" active={view === 'map'} onClick={() => setView('map')} />
-        <NavItem icon={<Calendar className="w-6 h-6" />} label="Planner" active={view === 'planner'} onClick={() => setView('planner')} />
-        <NavItem icon={<History className="w-6 h-6" />} label="History" active={view === 'history'} onClick={() => setView('history')} />
+      <nav className="fixed bottom-6 left-6 right-6 z-50 flex justify-around items-center px-4 py-2 bg-surface/40 backdrop-blur-xl rounded-full border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] md:hidden">
+        <NavItem icon={<Home className="w-5 h-5" fill={view === 'home' ? "currentColor" : "none"} />} label="Home" active={view === 'home'} onClick={() => setView('home')} />
+        <NavItem icon={<Compass className="w-5 h-5" />} label="Discover" active={view === 'discover'} onClick={() => setView('discover')} />
+        <NavItem icon={<MapIcon className="w-5 h-5" />} label="Map" active={view === 'map'} onClick={() => setView('map')} />
+        <NavItem icon={<Calendar className="w-5 h-5" />} label="Planner" active={view === 'planner'} onClick={() => setView('planner')} />
+        <NavItem icon={<History className="w-5 h-5" />} label="History" active={view === 'history'} onClick={() => setView('history')} />
       </nav>
 
       {/* Floating Action Button */}
@@ -2650,31 +2986,31 @@ function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNo
   return (
     <button 
       onClick={onClick}
-      className="relative flex flex-col items-center justify-center p-2 group"
+      className="relative flex flex-col items-center justify-center w-12 h-12 group outline-none"
     >
       {active && (
         <motion.div 
           layoutId="nav-active"
-          className="absolute inset-0 bg-gradient-to-br from-primary to-primary-container rounded-full h-12 w-12 self-center m-auto"
+          className="absolute inset-0 bg-gradient-to-br from-primary to-primary-container rounded-full shadow-lg shadow-primary/20"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
       <motion.div 
         animate={{ 
           scale: active ? 1.1 : 1,
-          y: active ? -2 : 0
+          y: active ? 0 : 0
         }}
-        className={`relative z-10 flex flex-col items-center justify-center ${
+        className={`relative z-10 flex items-center justify-center ${
           active ? 'text-background' : 'text-on-surface/70 group-hover:text-primary'
         }`}
       >
         {icon}
-        {!active && (
-          <span className="font-sans text-[10px] uppercase tracking-widest font-bold mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {label}
-          </span>
-        )}
       </motion.div>
+      {!active && (
+        <span className="absolute -bottom-6 font-sans text-[8px] uppercase tracking-widest font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap text-primary">
+          {label}
+        </span>
+      )}
     </button>
   );
 }
