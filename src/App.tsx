@@ -409,6 +409,13 @@ export default function App() {
   }, [user]);
 
   const totalBalance = useMemo(() => goals.reduce((acc, g) => acc + g.currentAmount, 0), [goals]);
+
+  const goalsMap = useMemo(() => {
+    return goals.reduce((acc, g) => {
+      acc[g.id] = g;
+      return acc;
+    }, {} as Record<string, Goal>);
+  }, [goals]);
   
   const contributorStats = useMemo(() => {
     const stats = transactions.reduce((acc, t) => {
@@ -564,7 +571,7 @@ export default function App() {
     if (!user || !fundData.goalId || !fundData.amount) return;
 
     const amount = parseFloat(fundData.amount);
-    const goal = goals.find(g => g.id === fundData.goalId);
+    const goal = goalsMap[fundData.goalId];
     if (!goal) return;
 
     const transactionId = Math.random().toString(36).substr(2, 9);
@@ -1743,10 +1750,10 @@ export default function App() {
                                     <span>{event.location}</span>
                                   </div>
                                 )}
-                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                {event.goalId && goalsMap[event.goalId] && (
                                   <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
                                     <History className="w-3.5 h-3.5 text-primary/60" />
-                                    <span>{goals.find(g => g.id === event.goalId)?.name}</span>
+                                    <span>{goalsMap[event.goalId]?.name}</span>
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
