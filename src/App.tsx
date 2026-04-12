@@ -855,6 +855,25 @@ export default function App() {
     }
   };
 
+
+  const handleAddCustomTag = () => {
+    const tag = customTag.trim();
+    if (tag) {
+      if (editingEvent) {
+        const currentTags = editingEvent.tags || [];
+        if (!currentTags.includes(tag)) {
+          setEditingEvent({...editingEvent, tags: [...currentTags, tag]});
+        }
+      } else {
+        const currentTags = newEvent.tags;
+        if (!currentTags.includes(tag)) {
+          setNewEvent({...newEvent, tags: [...currentTags, tag]});
+        }
+      }
+      setCustomTag('');
+    }
+  };
+
   const handleJoinEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !joinEventId) return;
@@ -2167,43 +2186,13 @@ export default function App() {
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
-                          const tag = customTag.trim();
-                          if (tag) {
-                            if (editingEvent) {
-                              const currentTags = editingEvent.tags || [];
-                              if (!currentTags.includes(tag)) {
-                                setEditingEvent({...editingEvent, tags: [...currentTags, tag]});
-                              }
-                            } else {
-                              const currentTags = newEvent.tags;
-                              if (!currentTags.includes(tag)) {
-                                setNewEvent({...newEvent, tags: [...currentTags, tag]});
-                              }
-                            }
-                            setCustomTag('');
-                          }
+                          handleAddCustomTag();
                         }
                       }}
                     />
                     <button 
                       type="button"
-                      onClick={() => {
-                        const tag = customTag.trim();
-                        if (tag) {
-                          if (editingEvent) {
-                            const currentTags = editingEvent.tags || [];
-                            if (!currentTags.includes(tag)) {
-                              setEditingEvent({...editingEvent, tags: [...currentTags, tag]});
-                            }
-                          } else {
-                            const currentTags = newEvent.tags;
-                            if (!currentTags.includes(tag)) {
-                              setNewEvent({...newEvent, tags: [...currentTags, tag]});
-                            }
-                          }
-                          setCustomTag('');
-                        }
-                      }}
+                      onClick={handleAddCustomTag}
                       className="text-[10px] uppercase tracking-widest font-bold text-primary hover:text-primary/80 transition-colors"
                     >
                       Add
