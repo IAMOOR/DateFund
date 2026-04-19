@@ -3187,7 +3187,6 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
         }
       } catch (error) {
         console.error("Image generation failed", error);
-        // Fallback to picsum
         setImageUrl(`https://picsum.photos/seed/${encodeURIComponent(idea.imageSearchTerm || idea.title)}/800/400`);
       } finally {
         setIsGenerating(false);
