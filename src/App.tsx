@@ -117,6 +117,8 @@ interface Event {
 }
 
 type View = 'home' | 'history' | 'discover' | 'map' | 'planner';
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -454,8 +456,7 @@ export default function App() {
       setEmailError("Enter your email to reset password");
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(email)) {
       setEmailError("Please enter a valid email address");
       return;
     }
@@ -483,11 +484,10 @@ export default function App() {
 
     // Robust Validation
     let hasError = false;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email) {
       setEmailError("Email is required");
       hasError = true;
-    } else if (!emailRegex.test(email)) {
+    } else if (!EMAIL_REGEX.test(email)) {
       setEmailError("Please enter a valid email address");
       hasError = true;
     }
