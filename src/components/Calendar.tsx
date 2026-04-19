@@ -15,7 +15,7 @@ import {
   parseISO
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 
 interface Event {
   id: string;
