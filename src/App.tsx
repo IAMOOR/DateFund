@@ -3155,12 +3155,19 @@ function DiscoverView({ location, goals, events }: {
   );
 }
 
+const imageCache = new Map<string, string>();
+
 function DiscoverCard({ idea }: { idea: any, key?: any }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     const generateImage = async () => {
+      if (imageCache.has(idea.title)) {
+        setImageUrl(imageCache.get(idea.title)!);
+        return;
+      }
+
       setIsGenerating(true);
       try {
         const response = await ai.models.generateContent({
@@ -3181,14 +3188,18 @@ function DiscoverCard({ idea }: { idea: any, key?: any }) {
 
         const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         if (imagePart?.inlineData?.data) {
-          setImageUrl(`data:image/png;base64,${imagePart.inlineData.data}`);
+          const url = `data:image/png;base64,${imagePart.inlineData.data}`;
+          imageCache.set(idea.title, url);
+          setImageUrl(url);
         } else {
           throw new Error("No image data returned");
         }
       } catch (error) {
         console.error("Image generation failed", error);
         // Fallback to picsum
-        setImageUrl(`https://picsum.photos/seed/${encodeURIComponent(idea.imageSearchTerm || idea.title)}/800/400`);
+        const fallbackUrl = `https://picsum.photos/seed/${encodeURIComponent(idea.imageSearchTerm || idea.title)}/800/400`;
+        imageCache.set(idea.title, fallbackUrl);
+        setImageUrl(fallbackUrl);
       } finally {
         setIsGenerating(false);
       }
