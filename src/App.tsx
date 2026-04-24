@@ -3281,16 +3281,18 @@ function ContributorCard({ name, amount, status, avatar, isActive = false }: {
   );
 }
 
-function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "text-on-surface", iconBg }: {
-  icon?: React.ReactNode,
-  avatar?: string,
-  title: string,
-  subtitle: string,
-  amount: string,
-  amountColor?: string,
-  iconBg: string,
-  key?: string | number
-}) {
+interface HistoryItemProps {
+  icon?: React.ReactNode;
+  avatar?: string;
+  title: string;
+  subtitle: string;
+  amount: string;
+  amountColor?: string;
+  iconBg: string;
+  key?: string | number;
+}
+
+function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "text-on-surface", iconBg }: HistoryItemProps) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: -10 }}
