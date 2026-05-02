@@ -62,7 +62,8 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
+  User,
+  writeBatch
 } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -350,16 +351,19 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        const batch = writeBatch(db);
+        let hasUpdates = false;
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
-              ...data,
-              collaborators: [user.uid]
+          if (!data.collaborators || !data.collaborators.includes(user.uid)) {
+            batch.set(doc(db, 'goals', docSnap.id), {
+              collaborators: data.collaborators ? [...new Set([...data.collaborators, user.uid])] : [user.uid]
             }, { merge: true });
+            hasUpdates = true;
           }
         }
 
@@ -368,13 +372,25 @@ export default function App() {
         const snapEvents = await getDocs(qEvents);
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
-              ...data,
-              collaborators: [user.uid],
-              rsvps: { [user.uid]: 'Going' }
-            }, { merge: true });
+          const needsCollaborators = !data.collaborators || !data.collaborators.includes(user.uid);
+          const needsRsvp = !data.rsvps || !data.rsvps[user.uid];
+
+          if (needsCollaborators || needsRsvp) {
+            const updates: any = {};
+            if (needsCollaborators) {
+              updates.collaborators = data.collaborators ? [...new Set([...data.collaborators, user.uid])] : [user.uid];
+            }
+            if (needsRsvp) {
+              updates.rsvps = { ...(data.rsvps || {}), [user.uid]: 'Going' };
+            }
+
+            batch.set(doc(db, 'events', docSnap.id), updates, { merge: true });
+            hasUpdates = true;
           }
+        }
+
+        if (hasUpdates) {
+          await batch.commit();
         }
       } catch (err) {
         // Silent fail for migration
