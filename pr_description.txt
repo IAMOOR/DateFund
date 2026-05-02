@@ -1,0 +1,4 @@
+🎯 **What:** Replaced the `any` type in the `results` state of `MapView` (and `DiscoverView`) with a properly defined `PlaceResult` TypeScript interface.
+💡 **Why:** Defining an interface for the map results state ensures compile-time safety and self-documents the expected structure, improving maintainability and reducing the likelihood of runtime errors.
+✅ **Verification:** Verified by running `npm run lint` and `npm run build` to confirm that the changes did not introduce any compilation or type errors. Also checked that `MapView` and `DiscoverView` functionality remains unchanged.
+✨ **Result:** Enhanced code health by eliminating `any` types for state arrays, resulting in safer and more readable component code.
