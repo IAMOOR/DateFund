@@ -40,6 +40,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarComponent from './components/Calendar';
 import { GoogleGenAI, Type } from "@google/genai";
+import { FirebaseError } from 'firebase/app';
 import { 
   auth, 
   db, 
@@ -439,9 +440,11 @@ export default function App() {
     setIsAuthenticating(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Login failed", error);
-      if (error.code !== 'auth/popup-closed-by-user') {
+      if (error instanceof FirebaseError && error.code !== 'auth/popup-closed-by-user') {
+        setAuthError("Google sign-in failed. Please try again.");
+      } else if (!(error instanceof FirebaseError)) {
         setAuthError("Google sign-in failed. Please try again.");
       }
     } finally {
@@ -465,10 +468,10 @@ export default function App() {
     try {
       await sendPasswordResetEmail(auth, email);
       setToast("Password reset email sent! Check your inbox.");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Reset failed", error);
       let message = "Failed to send reset email.";
-      if (error.code === 'auth/user-not-found') message = "No account found with this email.";
+      if (error instanceof FirebaseError && error.code === 'auth/user-not-found') message = "No account found with this email.";
       setAuthError(message);
     } finally {
       setIsResettingPassword(false);
@@ -510,14 +513,16 @@ export default function App() {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Email auth failed", error);
       let message = "Authentication failed.";
-      if (error.code === 'auth/email-already-in-use') message = "This email is already registered.";
-      if (error.code === 'auth/invalid-email') message = "Invalid email address.";
-      if (error.code === 'auth/weak-password') message = "Password is too weak.";
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        message = "Invalid email or password.";
+      if (error instanceof FirebaseError) {
+        if (error.code === 'auth/email-already-in-use') message = "This email is already registered.";
+        if (error.code === 'auth/invalid-email') message = "Invalid email address.";
+        if (error.code === 'auth/weak-password') message = "Password is too weak.";
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+          message = "Invalid email or password.";
+        }
       }
       setAuthError(message);
     } finally {
