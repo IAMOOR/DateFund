@@ -2884,10 +2884,17 @@ export default function App() {
     </div>
   );
 }
+interface PlaceResult {
+  name: string;
+  rating: string | number;
+  address: string;
+  description: string;
+}
+
 
 function MapView({ location }: { location: { lat: number, lng: number } | null }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
 
   const searchPlaces = async (searchQuery?: string) => {
@@ -2986,7 +2993,7 @@ function DiscoverView({ location, goals, events }: {
   events: Event[]
 }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
