@@ -123,6 +123,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [view, setView] = useState<View>('home');
   const [goals, setGoals] = useState<Goal[]>([]);
+  const goalsMap = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -564,7 +565,7 @@ export default function App() {
     if (!user || !fundData.goalId || !fundData.amount) return;
 
     const amount = parseFloat(fundData.amount);
-    const goal = goals.find(g => g.id === fundData.goalId);
+    const goal = goalsMap.get(fundData.goalId as string);
     if (!goal) return;
 
     const transactionId = Math.random().toString(36).substr(2, 9);
@@ -1743,10 +1744,10 @@ export default function App() {
                                     <span>{event.location}</span>
                                   </div>
                                 )}
-                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                {event.goalId && goalsMap.get(event.goalId) && (
                                   <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
                                     <History className="w-3.5 h-3.5 text-primary/60" />
-                                    <span>{goals.find(g => g.id === event.goalId)?.name}</span>
+                                    <span>{goalsMap.get(event.goalId)?.name}</span>
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
