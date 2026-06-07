@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
+  isValid,
   format, 
   addMonths, 
   subMonths, 
@@ -14,8 +15,10 @@ import {
   isToday,
   parseISO
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import {
+  ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
+import {
+  motion, AnimatePresence } from 'motion/react';
 
 interface Event {
   id: string;
@@ -55,7 +58,16 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   const getEventsForDay = (day: Date) => {
-    return events.filter(event => isSameDay(parseISO(event.date), day));
+    return events.filter(event => {
+      if (!event.date) return false;
+      try {
+        const parsedDate = parseISO(event.date);
+        if (!isValid(parsedDate)) return false;
+        return isSameDay(parsedDate, day);
+      } catch (e) {
+        return false;
+      }
+    });
   };
 
   return (
