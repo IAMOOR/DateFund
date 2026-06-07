@@ -538,7 +538,7 @@ export default function App() {
     e.preventDefault();
     if (!user || !newGoal.name || !newGoal.target || !newGoal.deadline) return;
     
-    const goalId = Math.random().toString(36).substr(2, 9);
+    const goalId = crypto.randomUUID();
     const goal: Goal = {
       id: goalId,
       ownerUid: user.uid,
@@ -567,7 +567,7 @@ export default function App() {
     const goal = goals.find(g => g.id === fundData.goalId);
     if (!goal) return;
 
-    const transactionId = Math.random().toString(36).substr(2, 9);
+    const transactionId = crypto.randomUUID();
     const transaction: Transaction = {
       id: transactionId,
       ownerUid: user.uid,
@@ -598,7 +598,7 @@ export default function App() {
     e.preventDefault();
     if (!user || !newEvent.title || !newEvent.date) return;
 
-    const eventId = Math.random().toString(36).substr(2, 9);
+    const eventId = crypto.randomUUID();
     const event: Event = {
       id: eventId,
       ownerUid: user.uid,
