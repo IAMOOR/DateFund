@@ -495,9 +495,14 @@ export default function App() {
     if (!password) {
       setPasswordError("Password is required");
       hasError = true;
-    } else if (authMode === 'signup' && password.length < 8) {
-      setPasswordError("Password must be at least 8 characters");
-      hasError = true;
+    } else if (authMode === 'signup') {
+      if (password.length < 8) {
+        setPasswordError("Password must be at least 8 characters");
+        hasError = true;
+      } else if (passwordStrength <= 2) {
+        setPasswordError("Password is too weak");
+        hasError = true;
+      }
     }
 
     if (hasError) return;
