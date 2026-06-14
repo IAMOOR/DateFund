@@ -701,6 +701,9 @@ export default function App() {
         }
       });
       const idea = JSON.parse(response.text || '{}');
+      if (!idea || typeof idea !== "object" || !idea.title || !idea.description) {
+        throw new Error("Invalid response format");
+      }
       setSoloDateIdea(idea);
     } catch (error) {
       setToast("Failed to get solo date idea.");
@@ -847,6 +850,9 @@ export default function App() {
       });
 
       const idea = JSON.parse(response.text);
+      if (!idea || typeof idea !== "object" || !idea.title || !idea.description || !Array.isArray(idea.tags)) {
+        throw new Error("Invalid response format");
+      }
       setSuggestedIdea(idea);
       setIsSuggestionModalOpen(true);
     } catch (err) {
@@ -2910,6 +2916,9 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
       const text = response.text || '';
       const cleanText = text.replace(/```json\n?|```/g, '').trim();
       const data = JSON.parse(cleanText);
+      if (!Array.isArray(data) || !data.every(item => item && typeof item === "object" && "name" in item && "address" in item && "rating" in item && "description" in item)) {
+        throw new Error("Invalid response format");
+      }
       setResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Maps search failed", error);
@@ -3009,6 +3018,9 @@ function DiscoverView({ location, goals, events }: {
         config: { responseMimeType: "application/json" }
       });
       const data = JSON.parse(response.text);
+      if (!Array.isArray(data) || !data.every(item => typeof item === "string")) {
+        throw new Error("Invalid response format");
+      }
       setSuggestions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Suggestions failed", error);
@@ -3045,6 +3057,9 @@ function DiscoverView({ location, goals, events }: {
         }
       });
       const data = JSON.parse(response.text);
+      if (!Array.isArray(data) || !data.every(item => item && typeof item === "object" && "title" in item && "source" in item && "summary" in item && "imageSearchTerm" in item)) {
+        throw new Error("Invalid response format");
+      }
       setResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Search failed", error);
