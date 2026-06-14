@@ -59,7 +59,8 @@ import {
   where, 
   onSnapshot, 
   addDoc, 
-  deleteDoc, 
+  deleteDoc,
+  writeBatch,
   handleFirestoreError, 
   OperationType,
   User
@@ -305,15 +306,15 @@ export default function App() {
         });
         
         // Mark as sent in Firestore to avoid repeat notifications
-        upcoming.forEach(async (event) => {
-          try {
-            await setDoc(doc(db, 'events', event.id), {
-              ...event,
-              reminderSent: true
-            }, { merge: true });
-          } catch (err) {
-            console.error("Failed to update reminder status", err);
-          }
+        const batch = writeBatch(db);
+        upcoming.forEach((event) => {
+          batch.set(doc(db, 'events', event.id), {
+            ...event,
+            reminderSent: true
+          }, { merge: true });
+        });
+        batch.commit().catch(err => {
+          console.error("Failed to update reminder status", err);
         });
 
         // Browser Notification if possible
