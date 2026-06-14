@@ -8,8 +8,6 @@ import {
   startOfWeek, 
   endOfWeek, 
   isSameMonth, 
-  isSameDay, 
-  addDays, 
   eachDayOfInterval,
   isToday,
   parseISO
@@ -54,9 +52,16 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
-  const getEventsForDay = (day: Date) => {
-    return events.filter(event => isSameDay(parseISO(event.date), day));
-  };
+  const eventsByDate = useMemo(() => {
+    return events.reduce((acc, event) => {
+      const dateStr = format(parseISO(event.date), 'yyyy-MM-dd');
+      if (!acc[dateStr]) {
+        acc[dateStr] = [];
+      }
+      acc[dateStr].push(event);
+      return acc;
+    }, {} as Record<string, Event[]>);
+  }, [events]);
 
   return (
     <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden shadow-xl">
@@ -99,7 +104,7 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
       {/* Days Grid */}
       <div className="grid grid-cols-7">
         {days.map((day, i) => {
-          const dayEvents = getEventsForDay(day);
+          const dayEvents = eventsByDate[format(day, 'yyyy-MM-dd')] || [];
           const isCurrentMonth = isSameMonth(day, currentMonth);
           
           return (
