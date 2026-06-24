@@ -116,6 +116,13 @@ interface Event {
   createdAt: string;
 }
 
+interface MapPlace {
+  name: string;
+  address: string;
+  rating: number | string;
+  description: string;
+}
+
 type View = 'home' | 'history' | 'discover' | 'map' | 'planner';
 
 export default function App() {
@@ -2887,7 +2894,7 @@ export default function App() {
 
 function MapView({ location }: { location: { lat: number, lng: number } | null }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<MapPlace[]>([]);
   const [loading, setLoading] = useState(false);
 
   const searchPlaces = async (searchQuery?: string) => {
