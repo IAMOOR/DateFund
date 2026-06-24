@@ -59,7 +59,8 @@ import {
   where, 
   onSnapshot, 
   addDoc, 
-  deleteDoc, 
+  deleteDoc,
+  writeBatch,
   handleFirestoreError, 
   OperationType,
   User
@@ -350,16 +351,31 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        let hasChanges = false;
+        let batch = writeBatch(db);
+        let count = 0;
+
+        const checkBatchLimit = async () => {
+            if (count === 500) {
+                await batch.commit();
+                batch = writeBatch(db);
+                count = 0;
+            }
+        };
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+            batch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            hasChanges = true;
+            count++;
+            await checkBatchLimit();
           }
         }
 
@@ -369,13 +385,21 @@ export default function App() {
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+            batch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
               rsvps: { [user.uid]: 'Going' }
             }, { merge: true });
+            hasChanges = true;
+            count++;
+            await checkBatchLimit();
           }
         }
+
+        if (hasChanges && count > 0) {
+            await batch.commit();
+        }
+
       } catch (err) {
         // Silent fail for migration
         console.debug("Migration check skipped or failed", err);
