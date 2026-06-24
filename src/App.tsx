@@ -495,8 +495,8 @@ export default function App() {
     if (!password) {
       setPasswordError("Password is required");
       hasError = true;
-    } else if (authMode === 'signup' && password.length < 8) {
-      setPasswordError("Password must be at least 8 characters");
+    } else if (authMode === 'signup' && passwordStrength < 4) {
+      setPasswordError("Password must be stronger (mix of uppercase, lowercase, numbers, and symbols)");
       hasError = true;
     }
 
