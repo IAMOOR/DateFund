@@ -40,8 +40,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarComponent from './components/Calendar';
 import { GoogleGenAI, Type } from "@google/genai";
-import { 
-  auth, 
+import { auth,
   db, 
   googleProvider, 
   signInWithPopup, 
@@ -62,8 +61,7 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
-} from './firebase';
+  User, writeBatch } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
@@ -350,16 +348,32 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        let batch = writeBatch(db);
+        let opsCount = 0;
+        let hasChanges = false;
+
+        const commitBatchIfNeeded = async () => {
+          if (opsCount >= 400) {
+            await batch.commit();
+            batch = writeBatch(db);
+            opsCount = 0;
+            hasChanges = false;
+          }
+        };
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+            batch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            opsCount++;
+            hasChanges = true;
+            await commitBatchIfNeeded();
           }
         }
 
@@ -369,12 +383,19 @@ export default function App() {
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+            batch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
               rsvps: { [user.uid]: 'Going' }
             }, { merge: true });
+            opsCount++;
+            hasChanges = true;
+            await commitBatchIfNeeded();
           }
+        }
+
+        if (hasChanges) {
+          await batch.commit();
         }
       } catch (err) {
         // Silent fail for migration
