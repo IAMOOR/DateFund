@@ -116,6 +116,20 @@ interface Event {
   createdAt: string;
 }
 
+interface DiscoverIdea {
+  title: string;
+  source: string;
+  summary: string;
+  imageSearchTerm?: string;
+}
+
+interface MapPlace {
+  name: string;
+  address: string;
+  rating: number | string;
+  description: string;
+}
+
 type View = 'home' | 'history' | 'discover' | 'map' | 'planner';
 
 export default function App() {
@@ -1634,7 +1648,7 @@ export default function App() {
                     whileTap={{ scale: 0.9 }}
                     onClick={() => {
                       setEditingEvent(null);
-                      setNewEvent({ title: '', description: '', date: '', time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
+                      setNewEvent({ title: '', description: '', date: '', time: '', location: '', goalId: '', reminder: false, reminderMinutes: 15, tags: [] });
                       setIsEventModalOpen(true);
                     }}
                     title="New Task"
@@ -1652,7 +1666,7 @@ export default function App() {
                     userId={user?.uid}
                     onAddEvent={(date) => {
                       setEditingEvent(null);
-                      setNewEvent({ title: '', description: '', date, time: '', location: '', reminder: false, reminderMinutes: 15, tags: [] });
+                      setNewEvent({ title: '', description: '', date, time: '', location: '', goalId: '', reminder: false, reminderMinutes: 15, tags: [] });
                       setIsEventModalOpen(true);
                     }}
                     onEditEvent={(event) => {
@@ -2497,6 +2511,7 @@ export default function App() {
                       date: new Date().toISOString().split('T')[0],
                       time: '18:00',
                       location: '',
+                      goalId: '',
                       reminder: true,
                       reminderMinutes: 60,
                       tags: ['Solo', 'Self-Love']
@@ -2887,7 +2902,7 @@ export default function App() {
 
 function MapView({ location }: { location: { lat: number, lng: number } | null }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<MapPlace[]>([]);
   const [loading, setLoading] = useState(false);
 
   const searchPlaces = async (searchQuery?: string) => {
@@ -2942,7 +2957,7 @@ function MapView({ location }: { location: { lat: number, lng: number } | null }
         />
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline" />
         <button 
-          onClick={searchPlaces}
+          onClick={() => searchPlaces()}
           className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-on-primary-fixed px-6 py-2.5 rounded-full text-xs font-bold shadow-sm active:scale-95 transition-transform"
         >
           Search
@@ -2986,7 +3001,7 @@ function DiscoverView({ location, goals, events }: {
   events: Event[]
 }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<DiscoverIdea[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -3155,7 +3170,7 @@ function DiscoverView({ location, goals, events }: {
   );
 }
 
-function DiscoverCard({ idea }: { idea: any, key?: any }) {
+function DiscoverCard({ idea }: { idea: DiscoverIdea }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
