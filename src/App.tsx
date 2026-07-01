@@ -3281,7 +3281,7 @@ function ContributorCard({ name, amount, status, avatar, isActive = false }: {
   );
 }
 
-function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "text-on-surface", iconBg }: {
+export function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "text-on-surface", iconBg }: {
   icon?: React.ReactNode,
   avatar?: string,
   title: string,
