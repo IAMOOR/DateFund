@@ -1663,7 +1663,9 @@ export default function App() {
                 ) : (
                   sortedEvents.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {sortedEvents.map((event, idx) => (
+                      {sortedEvents.map((event, idx) => {
+                        const eventGoal = event.goalId ? goals.find(g => g.id === event.goalId) : undefined;
+                        return (
                         <motion.div 
                           key={event.id}
                           initial={{ opacity: 0, scale: 0.95 }}
@@ -1743,10 +1745,10 @@ export default function App() {
                                     <span>{event.location}</span>
                                   </div>
                                 )}
-                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                {eventGoal && (
                                   <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
                                     <History className="w-3.5 h-3.5 text-primary/60" />
-                                    <span>{goals.find(g => g.id === event.goalId)?.name}</span>
+                                    <span>{eventGoal.name}</span>
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
@@ -1765,7 +1767,7 @@ export default function App() {
                             </div>
                           </div>
                         </motion.div>
-                      ))}
+                      )})}
                     </div>
                   ) : (
                     <motion.div 
