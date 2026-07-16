@@ -58,7 +58,6 @@ import {
   query, 
   where, 
   onSnapshot, 
-  addDoc, 
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
