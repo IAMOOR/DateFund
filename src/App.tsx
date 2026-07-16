@@ -60,6 +60,7 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc, 
+  writeBatch,
   handleFirestoreError, 
   OperationType,
   User
@@ -650,12 +651,29 @@ export default function App() {
     if (!user) return;
     try {
       const sharedGoals = goals.filter(g => g.collaborators.length > 1);
+      let batch = writeBatch(db);
+      let count = 0;
       for (const goal of sharedGoals) {
         const goalTransactions = transactions.filter(t => t.goalId === goal.id);
         for (const t of goalTransactions) {
-          await deleteDoc(doc(db, 'transactions', t.id));
+          batch.delete(doc(db, 'transactions', t.id));
+          count++;
+          if (count === 500) {
+            await batch.commit();
+            batch = writeBatch(db);
+            count = 0;
+          }
         }
-        await deleteDoc(doc(db, 'goals', goal.id));
+        batch.delete(doc(db, 'goals', goal.id));
+        count++;
+        if (count === 500) {
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      }
+      if (count > 0) {
+        await batch.commit();
       }
       setToast("Relationship ended. Funds split and shared dreams archived.");
       setIsBreakUpSummaryOpen(false);
