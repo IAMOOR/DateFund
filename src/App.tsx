@@ -353,29 +353,37 @@ export default function App() {
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
+        const goalPromises = [];
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
-              ...data,
-              collaborators: [user.uid]
-            }, { merge: true });
+            goalPromises.push(
+              setDoc(doc(db, 'goals', docSnap.id), {
+                ...data,
+                collaborators: [user.uid]
+              }, { merge: true })
+            );
           }
         }
+        await Promise.all(goalPromises);
 
         // Fix Events
         const qEvents = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
         const snapEvents = await getDocs(qEvents);
+        const eventPromises = [];
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
-              ...data,
-              collaborators: [user.uid],
-              rsvps: { [user.uid]: 'Going' }
-            }, { merge: true });
+            eventPromises.push(
+              setDoc(doc(db, 'events', docSnap.id), {
+                ...data,
+                collaborators: [user.uid],
+                rsvps: { [user.uid]: 'Going' }
+              }, { merge: true })
+            );
           }
         }
+        await Promise.all(eventPromises);
       } catch (err) {
         // Silent fail for migration
         console.debug("Migration check skipped or failed", err);
