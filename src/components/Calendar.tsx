@@ -17,7 +17,7 @@ import {
 import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-interface Event {
+export interface Event {
   id: string;
   ownerUid: string;
   title: string;
@@ -42,6 +42,10 @@ interface CalendarProps {
   onEditEvent: (event: Event) => void;
 }
 
+export const getEventsForDay = (events: Event[], day: Date) => {
+  return events.filter(event => isSameDay(parseISO(event.date), day));
+};
+
 export default function Calendar({ events, userId, onAddEvent, onEditEvent }: CalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -53,10 +57,6 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
-
-  const getEventsForDay = (day: Date) => {
-    return events.filter(event => isSameDay(parseISO(event.date), day));
-  };
 
   return (
     <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden shadow-xl">
@@ -99,7 +99,7 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
       {/* Days Grid */}
       <div className="grid grid-cols-7">
         {days.map((day, i) => {
-          const dayEvents = getEventsForDay(day);
+          const dayEvents = getEventsForDay(events, day);
           const isCurrentMonth = isSameMonth(day, currentMonth);
           
           return (
