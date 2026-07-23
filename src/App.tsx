@@ -62,7 +62,8 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
+  User,
+  writeBatch
 } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -350,16 +351,28 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        let batch = writeBatch(db);
+        let operationCount = 0;
+        let hasChanges = false;
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+            batch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            operationCount++;
+            hasChanges = true;
+
+            if (operationCount >= 500) {
+              await batch.commit();
+              batch = writeBatch(db);
+              operationCount = 0;
+            }
           }
         }
 
@@ -369,12 +382,24 @@ export default function App() {
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+            batch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
               rsvps: { [user.uid]: 'Going' }
             }, { merge: true });
+            operationCount++;
+            hasChanges = true;
+
+            if (operationCount >= 500) {
+              await batch.commit();
+              batch = writeBatch(db);
+              operationCount = 0;
+            }
           }
+        }
+
+        if (hasChanges && operationCount > 0) {
+           await batch.commit();
         }
       } catch (err) {
         // Silent fail for migration
