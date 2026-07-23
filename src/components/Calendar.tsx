@@ -14,7 +14,7 @@ import {
   isToday,
   parseISO
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Event {
