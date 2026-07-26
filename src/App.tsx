@@ -300,7 +300,8 @@ export default function App() {
 
       if (upcoming.length > 0) {
         setActiveReminders(prev => {
-          const newReminders = upcoming.filter(u => !prev.find(p => p.id === u.id));
+          const prevIds = new Set(prev.map(p => p.id));
+          const newReminders = upcoming.filter(u => !prevIds.has(u.id));
           return [...prev, ...newReminders];
         });
         
