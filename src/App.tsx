@@ -62,7 +62,8 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
+  User,
+  writeBatch
 } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -650,13 +651,36 @@ export default function App() {
     if (!user) return;
     try {
       const sharedGoals = goals.filter(g => g.collaborators.length > 1);
+
+      let batch = writeBatch(db);
+      let opCount = 0;
+
       for (const goal of sharedGoals) {
         const goalTransactions = transactions.filter(t => t.goalId === goal.id);
+
         for (const t of goalTransactions) {
-          await deleteDoc(doc(db, 'transactions', t.id));
+          batch.delete(doc(db, 'transactions', t.id));
+          opCount++;
+          if (opCount === 500) {
+            await batch.commit();
+            batch = writeBatch(db);
+            opCount = 0;
+          }
         }
-        await deleteDoc(doc(db, 'goals', goal.id));
+
+        batch.delete(doc(db, 'goals', goal.id));
+        opCount++;
+        if (opCount === 500) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
       }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
       setToast("Relationship ended. Funds split and shared dreams archived.");
       setIsBreakUpSummaryOpen(false);
     } catch (err) {
