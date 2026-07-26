@@ -801,6 +801,12 @@ export default function App() {
     }
   };
 
+  const goalsMap = useMemo(() => {
+    const map = new Map();
+    goals.forEach(g => map.set(g.id, g));
+    return map;
+  }, [goals]);
+
   const sortedEvents = useMemo(() => {
     return [...events].sort((a, b) => {
       if (plannerSort === 'date') {
@@ -1743,10 +1749,10 @@ export default function App() {
                                     <span>{event.location}</span>
                                   </div>
                                 )}
-                                {event.goalId && goals.find(g => g.id === event.goalId) && (
+                                {event.goalId && goalsMap.get(event.goalId) && (
                                   <div className="flex items-center gap-2.5 text-outline text-[10px] font-bold uppercase tracking-widest">
                                     <History className="w-3.5 h-3.5 text-primary/60" />
-                                    <span>{goals.find(g => g.id === event.goalId)?.name}</span>
+                                    <span>{goalsMap.get(event.goalId)?.name}</span>
                                   </div>
                                 )}
                                 {user && event.rsvps && event.rsvps[user.uid] && (
