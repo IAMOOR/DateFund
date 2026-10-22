@@ -116,6 +116,13 @@ interface Event {
   createdAt: string;
 }
 
+export interface DiscoverIdea {
+  title: string;
+  source: string;
+  summary: string;
+  imageSearchTerm: string;
+}
+
 type View = 'home' | 'history' | 'discover' | 'map' | 'planner';
 
 export default function App() {
@@ -2986,7 +2993,7 @@ function DiscoverView({ location, goals, events }: {
   events: Event[]
 }) {
   const [queryStr, setQueryStr] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<DiscoverIdea[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -3155,7 +3162,7 @@ function DiscoverView({ location, goals, events }: {
   );
 }
 
-function DiscoverCard({ idea }: { idea: any, key?: any }) {
+function DiscoverCard({ idea }: { idea: DiscoverIdea }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
