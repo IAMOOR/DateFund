@@ -118,6 +118,14 @@ interface Event {
 
 type View = 'home' | 'history' | 'discover' | 'map' | 'planner';
 
+
+export const getStrengthLabel = (score: number, password?: string) => {
+  if (!password) return "";
+  if (score <= 2) return "Weak";
+  if (score <= 4) return "Fair";
+  return "Strong";
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -189,12 +197,6 @@ export default function App() {
     return "bg-primary";
   };
 
-  const getStrengthLabel = (score: number) => {
-    if (!password) return "";
-    if (score <= 2) return "Weak";
-    if (score <= 4) return "Fair";
-    return "Strong";
-  };
 
   // Theme Listener
   useEffect(() => {
@@ -961,7 +963,7 @@ export default function App() {
                 {authMode === 'signup' && password && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Strength: {getStrengthLabel(passwordStrength)}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Strength: {getStrengthLabel(passwordStrength, password)}</span>
                     </div>
                     <div className="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
                       <motion.div 
