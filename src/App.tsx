@@ -61,6 +61,7 @@ import {
   addDoc, 
   deleteDoc, 
   handleFirestoreError, 
+  writeBatch,
   OperationType,
   User
 } from './firebase';
@@ -285,7 +286,7 @@ export default function App() {
   useEffect(() => {
     if (!user || events.length === 0) return;
 
-    const checkReminders = () => {
+    const checkReminders = async () => {
       const now = new Date();
       const upcoming = events.filter(event => {
         if (!event.reminder || event.reminderSent) return false;
@@ -305,16 +306,22 @@ export default function App() {
         });
         
         // Mark as sent in Firestore to avoid repeat notifications
-        upcoming.forEach(async (event) => {
-          try {
-            await setDoc(doc(db, 'events', event.id), {
-              ...event,
-              reminderSent: true
-            }, { merge: true });
-          } catch (err) {
-            console.error("Failed to update reminder status", err);
+        try {
+          const CHUNK_SIZE = 500;
+          for (let i = 0; i < upcoming.length; i += CHUNK_SIZE) {
+            const chunk = upcoming.slice(i, i + CHUNK_SIZE);
+            const batch = writeBatch(db);
+            chunk.forEach(event => {
+              batch.set(doc(db, 'events', event.id), {
+                ...event,
+                reminderSent: true
+              }, { merge: true });
+            });
+            await batch.commit();
           }
-        });
+        } catch (err) {
+          console.error("Failed to update reminder status", err);
+        }
 
         // Browser Notification if possible
         if ("Notification" in window && Notification.permission === "granted") {
