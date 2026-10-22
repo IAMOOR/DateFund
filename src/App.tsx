@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { calculatePasswordStrength, getStrengthColor, getStrengthLabel } from './utils/password';
 import { 
   Menu, 
   Plus, 
@@ -172,29 +173,11 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [activeReminders, setActiveReminders] = useState<Event[]>([]);
 
-  const passwordStrength = useMemo(() => {
-    if (!password) return 0;
-    let strength = 0;
-    if (password.length >= 8) strength += 1;
-    if (/[A-Z]/.test(password)) strength += 1;
-    if (/[a-z]/.test(password)) strength += 1;
-    if (/[0-9]/.test(password)) strength += 1;
-    if (/[^A-Za-z0-9]/.test(password)) strength += 1;
-    return strength;
-  }, [password]);
+  const passwordStrength = useMemo(() => calculatePasswordStrength(password), [password]);
 
-  const getStrengthColor = (score: number) => {
-    if (score <= 2) return "bg-error";
-    if (score <= 4) return "bg-secondary";
-    return "bg-primary";
-  };
 
-  const getStrengthLabel = (score: number) => {
-    if (!password) return "";
-    if (score <= 2) return "Weak";
-    if (score <= 4) return "Fair";
-    return "Strong";
-  };
+
+
 
   // Theme Listener
   useEffect(() => {
@@ -961,7 +944,7 @@ export default function App() {
                 {authMode === 'signup' && password && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Strength: {getStrengthLabel(passwordStrength)}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-outline">Strength: {getStrengthLabel(password, passwordStrength)}</span>
                     </div>
                     <div className="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
                       <motion.div 
