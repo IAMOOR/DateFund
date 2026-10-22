@@ -130,10 +130,14 @@ export default function App() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  useEffect(() => {
     const saved = localStorage.getItem('datefund-theme');
-    return (saved as 'light' | 'dark' | 'system') || 'system';
-  });
+    if (saved) {
+      setTheme(saved as 'light' | 'dark' | 'system');
+    }
+  }, []);
   const [isJoinGoalModalOpen, setIsJoinGoalModalOpen] = useState(false);
   const [isJoinEventModalOpen, setIsJoinEventModalOpen] = useState(false);
   const [isBreakUpConfirmOpen, setIsBreakUpConfirmOpen] = useState(false);
