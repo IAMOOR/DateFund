@@ -11,7 +11,12 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocFromServer, Timestamp } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfigRaw from '../firebase-applet-config.json';
+
+const firebaseConfig = {
+  ...firebaseConfigRaw,
+  apiKey: (typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FIREBASE_API_KEY : process?.env?.VITE_FIREBASE_API_KEY) || (firebaseConfigRaw as any).apiKey,
+};
 
 // Initialize Firebase
 if (!firebaseConfig || !firebaseConfig.apiKey) {
