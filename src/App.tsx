@@ -62,7 +62,8 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
+  User,
+  writeBatch
 } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -350,16 +351,28 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        let batch = writeBatch(db);
+        let opCount = 0;
+
+        const commitBatch = async () => {
+          if (opCount > 0) {
+            await batch.commit();
+            batch = writeBatch(db);
+            opCount = 0;
+          }
+        };
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
-          const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
-              ...data,
-              collaborators: [user.uid]
-            }, { merge: true });
+          const data = docSnap.data() as Goal;
+          if (!data.collaborators || !data.collaborators.includes(user.uid)) {
+            batch.update(doc(db, 'goals', docSnap.id), {
+              collaborators: Array.from(new Set([...(data.collaborators || []), user.uid]))
+            });
+            opCount++;
+            if (opCount >= 500) await commitBatch();
           }
         }
 
@@ -367,15 +380,21 @@ export default function App() {
         const qEvents = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
         const snapEvents = await getDocs(qEvents);
         for (const docSnap of snapEvents.docs) {
-          const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
-              ...data,
-              collaborators: [user.uid],
-              rsvps: { [user.uid]: 'Going' }
-            }, { merge: true });
+          const data = docSnap.data() as Event;
+          const hasCollaborator = data.collaborators?.includes(user.uid);
+          const hasRsvp = data.rsvps?.[user.uid] === 'Going';
+
+          if (!hasCollaborator || !hasRsvp) {
+            batch.update(doc(db, 'events', docSnap.id), {
+              collaborators: Array.from(new Set([...(data.collaborators || []), user.uid])),
+              rsvps: { ...(data.rsvps || {}), [user.uid]: 'Going' }
+            });
+            opCount++;
+            if (opCount >= 500) await commitBatch();
           }
         }
+
+        await commitBatch();
       } catch (err) {
         // Silent fail for migration
         console.debug("Migration check skipped or failed", err);
