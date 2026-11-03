@@ -18,6 +18,8 @@ import { ChevronLeft, ChevronRight, Clock, MapPin, Plus, Calendar as CalendarIco
 import { Event } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { MoodBadge } from './ui/MoodBadge';
+import { getMoodConfig } from '../utils/moods';
 
 interface CalendarProps {
   events: Event[];
@@ -142,8 +144,13 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
                         e.stopPropagation();
                         onEditEvent(event);
                       }}
-                      className="w-full text-left px-1.5 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors border-l-2 border-primary truncate"
+                      className="w-full text-left px-1.5 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors border-l-2 border-primary truncate flex items-center gap-1"
                     >
+                      {event.mood && (
+                        <span className="text-[10px] shrink-0" title={`Mood: ${event.mood}`}>
+                          {getMoodConfig(event.mood).emoji}
+                        </span>
+                      )}
                       <span className="text-[10px] font-bold text-primary truncate block leading-tight">
                         {event.title}
                       </span>
@@ -153,8 +160,12 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
 
                 {/* Mobile Micro Dots */}
                 <div className="sm:hidden flex gap-0.5 flex-wrap justify-center mt-1">
-                  {dayEvents.slice(0, 3).map((_, idx) => (
-                    <div key={idx} className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  {dayEvents.slice(0, 3).map((event, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-1.5 h-1.5 rounded-full ${event.mood ? getMoodConfig(event.mood).dotColor : 'bg-primary'}`}
+                      title={event.mood ? `Mood: ${event.mood}` : event.title}
+                    />
                   ))}
                 </div>
               </div>
@@ -194,7 +205,10 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
                 className="p-3.5 rounded-2xl bg-surface-container border border-outline-variant/15 hover:border-primary/40 transition-all cursor-pointer flex items-center justify-between gap-3"
               >
                 <div className="space-y-1 min-w-0">
-                  <h5 className="font-serif text-base font-bold text-on-surface truncate">{event.title}</h5>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h5 className="font-serif text-base font-bold text-on-surface truncate">{event.title}</h5>
+                    {event.mood && <MoodBadge mood={event.mood} variant="compact" />}
+                  </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-outline">
                     {event.time && (
                       <span className="flex items-center gap-1 text-primary font-medium">

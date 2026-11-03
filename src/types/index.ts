@@ -7,6 +7,8 @@ export interface Goal {
   currentAmount: number;
   deadline: string;
   createdAt: string;
+  archived?: boolean;
+  archivedAt?: string;
 }
 
 export interface Transaction {
@@ -31,6 +33,8 @@ export interface DateMemory {
   highlights?: string;
 }
 
+export type DateMood = 'Romantic' | 'Adventurous' | 'Cozy' | 'Playful' | 'Luxurious' | 'Relaxed';
+
 export interface Event {
   id: string;
   ownerUid: string;
@@ -44,6 +48,7 @@ export interface Event {
   reminderMinutes?: number;
   reminderSent?: boolean;
   tags?: string[];
+  mood?: DateMood;
   collaborators: string[];
   rsvps?: { [userId: string]: 'Going' | 'Maybe' | 'Not Going' };
   completed?: boolean;
@@ -79,3 +84,14 @@ export interface RelationshipData {
     date: string;
   }[];
 }
+
+export interface RomanticTip {
+  id?: string;
+  title: string;
+  category: string;
+  timeEstimate: string;
+  description: string;
+  steps: string[];
+  conversationStarter: string;
+}
+

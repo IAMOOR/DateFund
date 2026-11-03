@@ -2,69 +2,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ===============================================================
-    // Assumed Data Model
+    // Assumed Data Model & Access Control Architecture
     // ===============================================================
     //
-    // Collection: users
-    // Document ID: {uid}
-    // Fields:
-    //   - uid: string (required) - Firebase Auth UID
-    //   - displayName: string (optional) - User's display name
-    //   - email: string (required) - User's email
-    //   - photoURL: string (optional) - User's photo URL
-    //   - createdAt: string (optional) - ISO 8601 timestamp
+    // Collection: users/{userId}
+    // Fields: uid, displayName, email, photoURL, relationshipStartDate, partnerUid, role, createdAt
     //
-    // Collection: goals
-    // Document ID: {goalId}
-    // Fields:
-    //   - id: string (required)
-    //   - ownerUid: string (required) - UID of the user who created the goal
-    //   - collaborators: list (required) - List of UIDs who can access the goal
-    //   - name: string (required) - Goal name (1-100 chars)
-    //   - targetAmount: number (required) - Target amount (> 0)
-    //   - currentAmount: number (required) - Current saved amount
-    //   - deadline: string (required) - ISO 8601 date (YYYY-MM-DD)
-    //   - createdAt: string (required) - ISO 8601 timestamp
+    // Collection: goals/{goalId}
+    // Fields: id, ownerUid, collaborators, name, targetAmount, currentAmount, deadline, archived, archivedAt, createdAt
     //
-    // Collection: transactions
-    // Document ID: {transactionId}
-    // Fields:
-    //   - id: string (required)
-    //   - ownerUid: string (required)
-    //   - goalId: string (required)
-    //   - goalName: string (required)
-    //   - amount: number (required)
-    //   - date: string (required) - ISO 8601 date (YYYY-MM-DD)
-    //   - contributor: string (required) - "Me" or "Them"
-    //   - type: string (required) - "deposit" or "withdrawal"
-    //   - createdAt: string (required) - ISO 8601 timestamp
+    // Collection: transactions/{transactionId}
+    // Fields: id, ownerUid, goalId, goalName, amount, date, contributor, type, notes, createdAt
     //
-    // Collection: events
-    // Document ID: {eventId}
-    // Fields:
-    //   - id: string (required)
-    //   - ownerUid: string (required)
-    //   - title: string (required)
-    //   - description: string (optional)
-    //   - date: string (required) - ISO 8601 date (YYYY-MM-DD)
-    //   - time: string (optional)
-    //   - location: string (optional)
-    //   - reminder: bool (optional)
-    //   - reminderMinutes: number (optional)
-    //   - reminderSent: bool (optional)
-    //   - tags: list (optional)
-    //   - collaborators: list (optional)
-    //   - rsvps: map (optional)
-    //   - createdAt: string (required) - ISO 8601 timestamp
+    // Collection: events/{eventId}
+    // Fields: id, ownerUid, title, description, date, time, location, reminder, reminderMinutes, reminderSent, tags, mood, isMystery, mysteryRevealed, mysteryClue, collaborators, rsvps, memory, completed, createdAt
+    //
+    // Collection: users/{userId}/bucketList/{itemId}
+    // Fields: id, title, category, estimatedBudget, notes, season, addedBy, createdAt
     //
     // ===============================================================
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    
+
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isOwner(userId) {
@@ -79,15 +46,15 @@ service cloud.firestore {
     }
 
     function isGoalCollaborator(goalId) {
-      let goal = get(/databases/$(database)/documents/goals/$(goalId)).data;
-      return isAuthenticated() && (
-        goal.ownerUid == request.auth.uid ||
-        (goal.keys().hasAny(['collaborators']) && goal.collaborators.hasAny([request.auth.uid]))
+      return isAuthenticated() && exists(/databases/$(database)/documents/goals/$(goalId)) && (
+        get(/databases/$(database)/documents/goals/$(goalId)).data.ownerUid == request.auth.uid ||
+        (get(/databases/$(database)/documents/goals/$(goalId)).data.keys().hasAny(['collaborators']) && 
+         get(/databases/$(database)/documents/goals/$(goalId)).data.collaborators.hasAny([request.auth.uid]))
       );
     }
 
     function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+      return email is string && email.size() <= 200 && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
     function isValidDate(dateStr) {
@@ -95,21 +62,14 @@ service cloud.firestore {
     }
 
     function isValidTimestamp(ts) {
-      return ts is string && ts.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z$");
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-
-    function isRecent(ts) {
-      return isValidTimestamp(ts) && 
-             duration.value(request.time - time.date(ts)).isLow();
+      return ts is string && ts.size() <= 64 && ts.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z$");
     }
 
     function isAdmin() {
       return isAuthenticated() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['role']) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
         (request.auth.token.email == "thabomashao10@gmail.com" && request.auth.token.email_verified == true)
       );
     }
@@ -119,121 +79,230 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Domain Validators
+    // Domain Validation Blueprints
     // ===============================================================
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email']) &&
              data.uid == request.auth.uid &&
              isValidEmail(data.email) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             (!('relationshipStartDate' in data) || isValidDate(data.relationshipStartDate)) &&
+             (!('partnerUid' in data) || (data.partnerUid is string && data.partnerUid.size() <= 128)) &&
              (!('role' in data) || (data.role in ['user', 'admin'])) &&
              (!('createdAt' in data) || isValidTimestamp(data.createdAt));
     }
 
-    function isValidGoalCreate(data) {
+    function isValidGoalCreate(data, goalId) {
       return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
+             data.id == goalId &&
              data.ownerUid == request.auth.uid &&
              data.collaborators is list &&
+             data.collaborators.size() >= 1 &&
              data.collaborators.size() <= 10 &&
+             data.collaborators.hasAny([request.auth.uid]) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.targetAmount is number && data.targetAmount > 0 &&
-             data.currentAmount is number &&
+             data.targetAmount is number && data.targetAmount > 0 && data.targetAmount <= 100000000 &&
+             data.currentAmount is number && data.currentAmount >= 0 &&
              isValidDate(data.deadline) &&
-             isValidTimestamp(data.createdAt);
+             isValidTimestamp(data.createdAt) &&
+             (!('archived' in data) || data.archived is bool) &&
+             (!('archivedAt' in data) || isValidTimestamp(data.archivedAt));
     }
 
-    function isValidGoalUpdate(data) {
+    function isValidGoalUpdate(data, goalId) {
       return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
+             data.id == goalId &&
              data.ownerUid == resource.data.ownerUid &&
              data.collaborators is list &&
+             data.collaborators.size() >= 1 &&
              data.collaborators.size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.targetAmount is number && data.targetAmount > 0 &&
-             data.currentAmount is number &&
+             data.targetAmount is number && data.targetAmount > 0 && data.targetAmount <= 100000000 &&
+             data.currentAmount is number && data.currentAmount >= 0 &&
              isValidDate(data.deadline) &&
-             isValidTimestamp(data.createdAt);
+             isValidTimestamp(data.createdAt) &&
+             (!('archived' in data) || data.archived is bool) &&
+             (!('archivedAt' in data) || isValidTimestamp(data.archivedAt));
     }
 
-    function isValidTransaction(data) {
+    function isValidTransaction(data, transactionId) {
       return data.keys().hasAll(['id', 'ownerUid', 'goalId', 'goalName', 'amount', 'date', 'contributor', 'type', 'createdAt']) &&
+             data.id == transactionId &&
              data.ownerUid == request.auth.uid &&
-             data.goalId is string && data.goalId.size() < 100 &&
-             data.goalName is string && data.goalName.size() < 200 &&
-             data.amount is number &&
+             data.goalId is string && data.goalId.size() > 0 && data.goalId.size() <= 128 &&
+             data.goalName is string && data.goalName.size() <= 200 &&
+             data.amount is number && data.amount > 0 && data.amount <= 100000000 &&
              isValidDate(data.date) &&
              data.contributor in ['Me', 'Them'] &&
              data.type in ['deposit', 'withdrawal'] &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
              isValidTimestamp(data.createdAt);
     }
 
-    function isValidEvent(data) {
+    function isValidEvent(data, eventId) {
       return data.keys().hasAll(['id', 'ownerUid', 'title', 'date', 'createdAt']) &&
-             data.ownerUid == request.auth.uid &&
+             data.id == eventId &&
+             data.ownerUid == (resource != null ? resource.data.ownerUid : request.auth.uid) &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
              isValidDate(data.date) &&
              (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
              (!('time' in data) || (data.time is string && data.time.size() <= 20)) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 500)) &&
+             (!('goalId' in data) || (data.goalId is string && data.goalId.size() <= 128)) &&
              (!('reminder' in data) || (data.reminder is bool)) &&
-             (!('reminderMinutes' in data) || (data.reminderMinutes is number)) &&
+             (!('reminderMinutes' in data) || (data.reminderMinutes is number && data.reminderMinutes >= 0 && data.reminderMinutes <= 10080)) &&
              (!('reminderSent' in data) || (data.reminderSent is bool)) &&
              (!('tags' in data) || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('mood' in data) || (data.mood is string && data.mood.size() <= 50)) &&
+             (!('isMystery' in data) || (data.isMystery is bool)) &&
+             (!('mysteryRevealed' in data) || (data.mysteryRevealed is bool)) &&
+             (!('mysteryClue' in data) || (data.mysteryClue is string && data.mysteryClue.size() <= 500)) &&
              (!('collaborators' in data) || (data.collaborators is list && data.collaborators.size() <= 10)) &&
              (!('rsvps' in data) || (data.rsvps is map && data.rsvps.size() <= 10)) &&
+             (!('completed' in data) || (data.completed is bool)) &&
+             (!('memory' in data) || (data.memory is map && data.memory.size() <= 10)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidBucketItem(data, itemId) {
+      return data.keys().hasAll(['id', 'title', 'category', 'createdAt']) &&
+             data.id == itemId &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.category is string && data.category.size() <= 100 &&
+             (!('estimatedBudget' in data) || (data.estimatedBudget is number && data.estimatedBudget >= 0)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+             (!('season' in data) || (data.season is string && data.season.size() <= 50)) &&
+             (!('addedBy' in data) || (data.addedBy is string && data.addedBy.size() <= 100)) &&
              isValidTimestamp(data.createdAt);
     }
 
     // ===============================================================
-    // Rules
+    // Rules Matching Blocks
     // ===============================================================
 
+    // Users Collection
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+      allow read: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUser(request.resource.data) &&
                     (!('role' in request.resource.data) || request.resource.data.role == 'user');
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUser(request.resource.data) &&
                     fieldUnchanged('uid') && fieldUnchanged('createdAt') &&
                     (fieldUnchanged('role') || isAdmin());
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // User Wishlist / BucketList Subcollection
+      match /bucketList/{itemId} {
+        allow read: if isValidId(userId) && isValidId(itemId) && (isOwner(userId) || isAdmin());
+        allow create: if isValidId(userId) && isValidId(itemId) && isOwner(userId) && isValidBucketItem(request.resource.data, itemId);
+        allow update: if isValidId(userId) && isValidId(itemId) && isOwner(userId) && isValidBucketItem(request.resource.data, itemId) &&
+                      fieldUnchanged('id') && fieldUnchanged('createdAt');
+        allow delete: if isValidId(userId) && isValidId(itemId) && (isOwner(userId) || isAdmin());
+      }
     }
 
+    // Goals Collection
     match /goals/{goalId} {
-      allow read: if isAuthenticated() && (
+      allow read: if isValidId(goalId) && isAuthenticated() && (
         request.auth.uid == resource.data.ownerUid || 
         (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid])) ||
         isAdmin()
       );
-      allow create: if isAuthenticated() && isValidGoalCreate(request.resource.data);
-      allow update: if isAuthenticated() && (
-        (request.auth.uid == resource.data.ownerUid && isValidGoalUpdate(request.resource.data) && 
-         fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt')) ||
-        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]) && 
-         isValidGoalUpdate(request.resource.data) &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentAmount', 'collaborators']) &&
-         fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt')) ||
+
+      allow create: if isValidId(goalId) && isAuthenticated() && isValidGoalCreate(request.resource.data, goalId);
+
+      allow update: if isValidId(goalId) && isAuthenticated() && (
+        // Tier 1: Goal Owner Update
+        // Only the goal owner can modify metadata, deadlines, target amounts, or collaborators list
+        (request.auth.uid == resource.data.ownerUid &&
+         isValidGoalUpdate(request.resource.data, goalId) &&
+         request.resource.data.id == goalId &&
+         fieldUnchanged('id') &&
+         fieldUnchanged('ownerUid') &&
+         fieldUnchanged('createdAt')) ||
+
+        // Tier 2: Goal Collaborator Update (NON-OWNER)
+        // STRICT PRIVILEGE BOUNDARY: Collaborators can ONLY update currentAmount (e.g. contributing savings).
+        // Collaborators are FORBIDDEN from altering collaborators membership list or ownerUid!
+        (resource.data.keys().hasAny(['collaborators']) &&
+         resource.data.collaborators.hasAny([request.auth.uid]) &&
+         request.auth.uid != resource.data.ownerUid &&
+         isValidGoalUpdate(request.resource.data, goalId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentAmount']) &&
+         request.resource.data.collaborators == resource.data.collaborators &&
+         fieldUnchanged('id') &&
+         fieldUnchanged('ownerUid') &&
+         fieldUnchanged('name') &&
+         fieldUnchanged('targetAmount') &&
+         fieldUnchanged('deadline') &&
+         fieldUnchanged('createdAt')) ||
+
         isAdmin()
       );
-      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.ownerUid || isAdmin());
+
+      // Only the goal owner or admin can delete a goal
+      allow delete: if isValidId(goalId) && isAuthenticated() && (request.auth.uid == resource.data.ownerUid || isAdmin());
     }
 
+    // Transactions Collection
     match /transactions/{transactionId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidTransaction(request.resource.data) &&
-                    fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt');
-      allow delete: if isDocOwner() || isAdmin();
+      allow read: if isValidId(transactionId) && (isDocOwner() || isAdmin());
+
+      // Only authenticated users who are verified collaborators/owners of the referenced goal can log transactions
+      allow create: if isValidId(transactionId) &&
+                    isAuthenticated() &&
+                    isValidTransaction(request.resource.data, transactionId) &&
+                    isGoalCollaborator(request.resource.data.goalId);
+
+      allow update: if isValidId(transactionId) &&
+                    (request.auth.uid == resource.data.ownerUid || isAdmin()) &&
+                    isValidTransaction(request.resource.data, transactionId) &&
+                    fieldUnchanged('id') &&
+                    fieldUnchanged('ownerUid') &&
+                    fieldUnchanged('goalId') &&
+                    fieldUnchanged('amount') &&
+                    fieldUnchanged('type') &&
+                    fieldUnchanged('createdAt');
+
+      allow delete: if isValidId(transactionId) && (request.auth.uid == resource.data.ownerUid || isAdmin());
     }
 
+    // Events Collection
     match /events/{eventId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow create: if isAuthenticated() && isValidEvent(request.resource.data);
-      allow update: if (isDocOwner() || isAdmin()) && isValidEvent(request.resource.data) &&
-                    fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt');
-      allow delete: if isDocOwner() || isAdmin();
+      allow read: if isValidId(eventId) && (isDocOwner() || isAdmin());
+
+      allow create: if isValidId(eventId) && isAuthenticated() && isValidEvent(request.resource.data, eventId);
+
+      allow update: if isValidId(eventId) && isAuthenticated() && (
+        // Tier 1: Event Owner Update
+        (request.auth.uid == resource.data.ownerUid &&
+         isValidEvent(request.resource.data, eventId) &&
+         fieldUnchanged('id') &&
+         fieldUnchanged('ownerUid') &&
+         fieldUnchanged('createdAt')) ||
+
+        // Tier 2: Event Collaborator Update
+        // STRICT PRIVILEGE BOUNDARY: Collaborators can only update their rsvps, completion status, memory notes, or reminder flags.
+        // Collaborators are FORBIDDEN from altering event ownership or collaborators list!
+        (resource.data.keys().hasAny(['collaborators']) &&
+         resource.data.collaborators.hasAny([request.auth.uid]) &&
+         request.auth.uid != resource.data.ownerUid &&
+         isValidEvent(request.resource.data, eventId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rsvps', 'completed', 'memory', 'reminderSent']) &&
+         request.resource.data.collaborators == resource.data.collaborators &&
+         fieldUnchanged('id') &&
+         fieldUnchanged('ownerUid') &&
+         fieldUnchanged('createdAt')) ||
+
+        isAdmin()
+      );
+
+      // Only the event owner or admin can delete an event
+      allow delete: if isValidId(eventId) && isAuthenticated() && (request.auth.uid == resource.data.ownerUid || isAdmin());
     }
 
-    // Default deny
+    // Default Deny Catch-All
     match /{document=**} {
       allow read, write: if false;
     }

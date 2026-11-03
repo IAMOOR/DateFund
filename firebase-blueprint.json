@@ -9,9 +9,28 @@
         "displayName": { "type": "string", "description": "User's display name" },
         "email": { "type": "string", "description": "User's email" },
         "photoURL": { "type": "string", "description": "User's photo URL" },
+        "relationshipStartDate": { "type": "string", "format": "date", "description": "Anniversary date" },
+        "partnerUid": { "type": "string", "description": "Partner UID" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User access role" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
       },
       "required": ["uid", "email"]
+    },
+    "BucketListItem": {
+      "title": "BucketListItem",
+      "description": "A wishlist item for future dates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "estimatedBudget": { "type": "number" },
+        "notes": { "type": "string" },
+        "season": { "type": "string" },
+        "addedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "createdAt"]
     },
     "Goal": {
       "title": "Goal",
@@ -25,6 +44,8 @@
         "targetAmount": { "type": "number" },
         "currentAmount": { "type": "number" },
         "deadline": { "type": "string", "format": "date" },
+        "archived": { "type": "boolean" },
+        "archivedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "ownerUid", "name", "targetAmount", "currentAmount", "deadline"]
@@ -42,6 +63,7 @@
         "date": { "type": "string", "format": "date" },
         "contributor": { "type": "string", "enum": ["Me", "Them"] },
         "type": { "type": "string", "enum": ["deposit", "withdrawal"] },
+        "notes": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "ownerUid", "goalId", "amount", "date", "contributor", "type"]
@@ -58,12 +80,19 @@
         "date": { "type": "string", "format": "date" },
         "time": { "type": "string" },
         "location": { "type": "string" },
+        "goalId": { "type": "string" },
         "reminder": { "type": "boolean" },
         "reminderMinutes": { "type": "number" },
         "reminderSent": { "type": "boolean" },
         "tags": { "type": "array", "items": { "type": "string" } },
+        "mood": { "type": "string" },
+        "isMystery": { "type": "boolean" },
+        "mysteryRevealed": { "type": "boolean" },
+        "mysteryClue": { "type": "string" },
         "collaborators": { "type": "array", "items": { "type": "string" } },
-        "rsvps": { "type": "object", "additionalProperties": { "type": "string" } },
+        "rsvps": { "type": "object" },
+        "completed": { "type": "boolean" },
+        "memory": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "ownerUid", "title", "date"]
@@ -74,17 +103,21 @@
       "schema": "UserProfile",
       "description": "Private user profiles"
     },
+    "/users/{uid}/bucketList/{itemId}": {
+      "schema": "BucketListItem",
+      "description": "Private user wishlist and bucket list destinations"
+    },
     "/goals/{goalId}": {
       "schema": "Goal",
-      "description": "Saving goals"
+      "description": "Saving goals with strict owner-collaborator separation"
     },
     "/transactions/{transactionId}": {
       "schema": "Transaction",
-      "description": "Financial transactions"
+      "description": "Financial transactions verified against member goals"
     },
     "/events/{eventId}": {
       "schema": "Event",
-      "description": "Scheduled events"
+      "description": "Scheduled events with owner-only access control changes"
     }
   }
 }

@@ -57,7 +57,9 @@ import {
   TrendingUp,
   Eye,
   EyeOff,
-  ChevronLeft
+  ChevronLeft,
+  Target,
+  MessageCircleHeart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarComponent from './components/Calendar';
@@ -68,6 +70,7 @@ import YearInLoveModal from './components/wrapped/YearInLoveModal';
 import PartnerInviteModal from './components/invite/PartnerInviteModal';
 import WhoTreatsSplitterModal from './components/splitter/WhoTreatsSplitterModal';
 import DateBucketListModal from './components/bucketlist/DateBucketListModal';
+import RomanticTipsModal from './components/modals/RomanticTipsModal';
 import GoogleDateMap from './components/maps/GoogleDateMap';
 import WishlistView from './components/views/WishlistView';
 import ScrapbookView from './components/views/ScrapbookView';
@@ -75,16 +78,21 @@ import MilestonesView from './components/views/MilestonesView';
 import RelationshipSettingsView from './components/views/RelationshipSettingsView';
 import HistoryView from './components/views/HistoryView';
 import DiscoverView from './components/views/DiscoverView';
+import DreamsView from './components/views/DreamsView';
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
 import { GoalPaceChart } from './components/goals/GoalPaceChart';
 import { formatRand, formatDateShort, calculateGoalPace } from './utils/formatters';
-import { Goal, Transaction, Event, DateMemory, BucketListItem, RelationshipData } from './types';
+import { Goal, Transaction, Event, DateMemory, BucketListItem, RelationshipData, DateMood } from './types';
+import { DATE_MOODS, getMoodConfig } from './utils/moods';
+import { MoodBadge } from './components/ui/MoodBadge';
+import { SA_PROVINCES, getNearestProvince } from './utils/provinces';
 import { hapticLight, hapticMedium, hapticSuccess, hapticCelebration } from './utils/haptics';
-import { scheduleDateReminder, requestNotificationPermissions } from './utils/notifications';
+import { scheduleDateReminder, requestNotificationPermissions, cancelAllScheduledReminders } from './utils/notifications';
 import { setupStatusBar } from './utils/statusBar';
-import { getCachedAI, setCachedAI } from './utils/aiCache';
+import { getCachedAI, setCachedAI, clearUserAICache } from './utils/aiCache';
 import { suggestDateIdea, getSoloEncouragement, getSoloDateIdea } from './utils/aiClient';
+import { mapGoalDoc, mapTransactionDoc, mapEventDoc, mapBucketItemDoc } from './utils/firestoreUtils';
 import confetti from 'canvas-confetti';
 import { 
   auth, 
@@ -117,7 +125,7 @@ const AVATAR_ME = "https://lh3.googleusercontent.com/aida-public/AB6AXuCI9vqhcwk
 const AVATAR_THEM = "https://lh3.googleusercontent.com/aida-public/AB6AXuAtSrWZ1IwuPWyeSCMCaLnRPy3BkUAKSiMvfJhcK9E5rJP3vovDVSODIg8sP4Q3rADR1gaNrhe9UaQ_fq10mqBujTlzOtTWG87Fjp-671jT35crUY5spPerfxObhMTtP5snzeDplyp5ipu1WEMDbPKY5LvyNyGpi50vqZozS-yyRrPWAEFBzxsvzB8RmfWhB32HTc59fVsigig_oA3WGXBjy8kbIbHtoszMYp8v5EGHeRMtOcujZIs-eXfLHtd_0oFxNPPFmGhziq8";
 const AVATAR_NAV = "https://lh3.googleusercontent.com/aida-public/AB6AXuA20UXs9pIK-DCOsonkEu1jFsmy1lA1Ber-Qz_WRjRxv1kDJtFW3kCgu2-LPm16-MT53WL_17D3m4fm0TiD60AvSvEy9llEaq89YxnqlcGysbofDKyx_S814mqMekZlxDC2r5enku9HhhAckS1Scibd1xRf-BcE2NiTJzVd-awYAxPjaM7JWoLSOIL8WkNEGvgBVF1m4-fr4wco6N8AVlK_FhBOfikhacdvnJY4GAgnCmP1Qkqsj55mCtOFoy8MT2CfI9E3SvGDgpM";
 
-type View = 'home' | 'history' | 'discover' | 'map' | 'planner' | 'wishlist' | 'scrapbook' | 'milestones' | 'relationship';
+type View = 'home' | 'history' | 'discover' | 'map' | 'planner' | 'wishlist' | 'scrapbook' | 'milestones' | 'relationship' | 'dreams';
 
 interface GoalPaceAnalysis {
   isCompleted: boolean;
@@ -216,6 +224,8 @@ export default function App() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSplitterModalOpen, setIsSplitterModalOpen] = useState(false);
   const [isBucketListModalOpen, setIsBucketListModalOpen] = useState(false);
+  const [isRomanticTipsModalOpen, setIsRomanticTipsModalOpen] = useState(false);
+  const [romanticTipsMood, setRomanticTipsMood] = useState<DateMood>('Romantic');
   const [mysteryEventToReveal, setMysteryEventToReveal] = useState<Event | null>(null);
   const [bucketList, setBucketList] = useState<BucketListItem[]>([]);
   const [relationshipStartDate, setRelationshipStartDate] = useState('2024-02-14');
@@ -228,6 +238,7 @@ export default function App() {
   const [isBreakUpConfirmOpen, setIsBreakUpConfirmOpen] = useState(false);
   const [plannerMode, setPlannerMode] = useState<'list' | 'grid' | 'calendar'>('grid');
   const [plannerSort, setPlannerSort] = useState<'date' | 'time' | 'title'>('date');
+  const [plannerMoodFilter, setPlannerMoodFilter] = useState<DateMood | 'all'>('all');
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [joinEventId, setJoinEventId] = useState('');
   const [newGoal, setNewGoal] = useState({ name: '', target: '', deadline: '' });
@@ -243,7 +254,8 @@ export default function App() {
     reminderMinutes: 15, 
     tags: [] as string[],
     isMystery: false,
-    mysteryClue: ''
+    mysteryClue: '',
+    mood: 'Romantic' as DateMood
   });
   const [profileData, setProfileData] = useState({ displayName: '', photoURL: '' });
   const [customTag, setCustomTag] = useState('');
@@ -270,6 +282,7 @@ export default function App() {
   const [passwordError, setPasswordError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [activeReminders, setActiveReminders] = useState<Event[]>([]);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'Me' | 'Them'>('all');
@@ -381,7 +394,9 @@ export default function App() {
     let unsubBucket: (() => void) | undefined;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        // Authenticated Firebase User
         setUser(currentUser);
+        setIsDemoMode(false);
         setIsAuthReady(true);
         const userRef = doc(db, 'users', currentUser.uid);
         try {
@@ -421,33 +436,24 @@ export default function App() {
           // Bucket List Listener
           const bucketColl = collection(db, 'users', currentUser.uid, 'bucketList');
           unsubBucket = onSnapshot(bucketColl, (snap) => {
-            const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as BucketListItem));
-            if (list.length > 0) {
-              setBucketList(list);
-            }
+            const list = snap.docs.map(d => mapBucketItemDoc(d));
+            setBucketList(list);
           }, () => {});
         } catch (err) {
           console.warn("User profile read notice:", err);
         }
       } else {
-        // Check for local stored session
-        const savedSession = localStorage.getItem('datefund_session_user');
-        if (savedSession) {
-          try {
-            const parsed = JSON.parse(savedSession);
-            setUser(parsed);
-            setProfileData({
-              displayName: parsed.displayName || '',
-              photoURL: parsed.photoURL || AVATAR_NAV
-            });
-          } catch {
-            setUser(null);
-            setUserProfile(null);
-          }
-        } else {
-          setUser(null);
-          setUserProfile(null);
-        }
+        // Unauthenticated - clean up private session state and scheduled timers
+        cancelAllScheduledReminders();
+        clearUserAICache();
+        localStorage.removeItem('datefund_session_user');
+        setUser(null);
+        setUserProfile(null);
+        setGoals([]);
+        setTransactions([]);
+        setEvents([]);
+        setBucketList([]);
+        setIsDemoMode(false);
         setIsAuthReady(true);
       }
     });
@@ -555,9 +561,12 @@ export default function App() {
 
   // Firestore Listeners
   useEffect(() => {
-    if (!user) {
-      setGoals([]);
-      setTransactions([]);
+    if (!user || isDemoMode) {
+      if (!isDemoMode) {
+        setGoals([]);
+        setTransactions([]);
+        setEvents([]);
+      }
       return;
     }
 
@@ -599,7 +608,7 @@ export default function App() {
 
     const goalsQuery = query(collection(db, 'goals'), where('collaborators', 'array-contains', user.uid));
     const unsubscribeGoals = onSnapshot(goalsQuery, (snapshot) => {
-      const goalsList = snapshot.docs.map(doc => ({ ...doc.data() } as Goal));
+      const goalsList = snapshot.docs.map(doc => mapGoalDoc(doc));
       setGoals(goalsList.sort((a, b) => b.id.localeCompare(a.id)));
     }, (err) => {
       console.warn("Goals snapshot notice:", err.message);
@@ -619,7 +628,7 @@ export default function App() {
 
     const transactionsQuery = query(collection(db, 'transactions'), where('ownerUid', '==', user.uid));
     const unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactionsList = snapshot.docs.map(doc => ({ ...doc.data() } as Transaction));
+      const transactionsList = snapshot.docs.map(doc => mapTransactionDoc(doc));
       setTransactions(transactionsList.sort((a, b) => b.date.localeCompare(a.date)));
     }, (err) => {
       console.warn("Transactions snapshot notice:", err.message);
@@ -651,7 +660,7 @@ export default function App() {
 
     const eventsQuery = query(collection(db, 'events'), where('collaborators', 'array-contains', user.uid));
     const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
-      const eventsList = snapshot.docs.map(doc => ({ ...doc.data() } as Event));
+      const eventsList = snapshot.docs.map(doc => mapEventDoc(doc));
       setEvents(eventsList.sort((a, b) => a.date.localeCompare(b.date)));
     }, (err) => {
       console.warn("Events snapshot notice:", err.message);
@@ -676,7 +685,7 @@ export default function App() {
       unsubscribeTransactions();
       unsubscribeEvents();
     };
-  }, [user]);
+  }, [user, isDemoMode]);
 
   const totalDeposits = useMemo(() => 
     transactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0)
@@ -789,23 +798,8 @@ export default function App() {
         await signInWithEmailAndPassword(auth, email.trim(), password);
       }
     } catch (error: any) {
-      // If Firebase project has not enabled Email/Password provider in GCP Console (OPERATION_NOT_ALLOWED)
       if (error?.code === 'auth/operation-not-allowed' || error?.message?.includes('OPERATION_NOT_ALLOWED')) {
-        console.warn("Email/Password provider not active in Firebase Console. Seamlessly initializing couple session for", email);
-        const cleanEmail = email.trim();
-        const baseName = cleanEmail.split('@')[0];
-        const formattedName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-        const localUid = 'usr_' + btoa(cleanEmail.toLowerCase()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
-        const sessionUser: any = {
-          uid: localUid,
-          email: cleanEmail,
-          displayName: formattedName,
-          photoURL: AVATAR_ME,
-        };
-        localStorage.setItem('datefund_session_user', JSON.stringify(sessionUser));
-        setUser(sessionUser);
-        setIsAuthReady(true);
-        setToast(`Welcome to DateFund, ${formattedName}! ❤️`);
+        setAuthError("Email authentication is disabled in Firebase Console. Please sign in with Google or use Demo Couple mode.");
         return;
       }
 
@@ -837,28 +831,110 @@ export default function App() {
   const handleGuestLogin = () => {
     setIsAuthenticating(true);
     setAuthError('');
+    // Clear any previous reminders and user-scoped caches
+    cancelAllScheduledReminders();
+    if (user?.uid) {
+      clearUserAICache(user.uid);
+    }
     const demoUser: any = {
-      uid: 'demo_couple_thabo',
-      email: 'couple@datefund.app',
-      displayName: 'Thabo & Partner',
+      uid: 'demo_guest_user',
+      email: 'guest@datefund.demo',
+      displayName: 'Demo Couple',
       photoURL: AVATAR_ME,
       isAnonymous: true
     };
-    localStorage.setItem('datefund_session_user', JSON.stringify(demoUser));
+    setIsDemoMode(true);
     setUser(demoUser);
+    setUserProfile({
+      uid: 'demo_guest_user',
+      email: 'guest@datefund.demo',
+      displayName: 'Demo Couple',
+      photoURL: AVATAR_ME,
+      relationshipStartDate: '2024-02-14',
+      createdAt: new Date().toISOString()
+    });
+    setGoals([
+      {
+        id: 'demo_goal_1',
+        ownerUid: 'demo_guest_user',
+        collaborators: ['demo_guest_user'],
+        name: 'Weekend Getaway in Franschhoek',
+        targetAmount: 5000,
+        currentAmount: 2400,
+        deadline: '2026-12-31',
+        createdAt: new Date().toISOString()
+      }
+    ]);
+    setTransactions([
+      {
+        id: 'demo_tx_1',
+        ownerUid: 'demo_guest_user',
+        goalId: 'demo_goal_1',
+        goalName: 'Weekend Getaway in Franschhoek',
+        amount: 1400,
+        date: new Date().toISOString().split('T')[0],
+        contributor: 'Me',
+        type: 'deposit',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'demo_tx_2',
+        ownerUid: 'demo_guest_user',
+        goalId: 'demo_goal_1',
+        goalName: 'Weekend Getaway in Franschhoek',
+        amount: 1000,
+        date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+        contributor: 'Them',
+        type: 'deposit',
+        createdAt: new Date().toISOString()
+      }
+    ]);
+    setEvents([
+      {
+        id: 'demo_evt_1',
+        ownerUid: 'demo_guest_user',
+        title: 'Candlelight Sunset Dinner',
+        description: 'Reservation overlooking the valley',
+        date: new Date().toISOString().split('T')[0],
+        time: '19:30',
+        location: 'Sunset Vista Restaurant',
+        collaborators: ['demo_guest_user'],
+        rsvps: { 'demo_guest_user': 'Going' },
+        createdAt: new Date().toISOString(),
+        mood: 'romantic'
+      }
+    ]);
     setIsAuthReady(true);
     setIsAuthenticating(false);
     setToast("Welcome to Demo Couple mode! 🥂");
   };
 
   const handleLogout = async () => {
+    cancelAllScheduledReminders();
+    if (user?.uid) {
+      clearUserAICache(user.uid);
+    }
     localStorage.removeItem('datefund_session_user');
     try {
       await signOut(auth);
     } catch (error) {
       console.warn("Logout notification:", error);
     }
+    setIsDemoMode(false);
     setUser(null);
+    setUserProfile(null);
+    setGoals([]);
+    setTransactions([]);
+    setEvents([]);
+    setBucketList([]);
+    setBreakUpData(null);
+    setDailyAdvice(null);
+    setSoloDateIdea(null);
+    setActiveReminders([]);
+    setProfileData({
+      displayName: '',
+      photoURL: AVATAR_NAV
+    });
     setView('home');
   };
 
@@ -872,6 +948,40 @@ export default function App() {
     const target = parseFloat(newGoal.target);
     if (isNaN(target) || target <= 0) {
       setToast("Target amount must be a positive number.");
+      return;
+    }
+
+    if (isDemoMode) {
+      if (editingGoal) {
+        const updatedGoal: Goal = {
+          ...editingGoal,
+          name: newGoal.name,
+          targetAmount: target,
+          deadline: newGoal.deadline
+        };
+        setGoals(prev => prev.map(g => g.id === editingGoal.id ? updatedGoal : g));
+        setEditingGoal(null);
+        setNewGoal({ name: '', target: '', deadline: '' });
+        setIsGoalModalOpen(false);
+        setToast("Dream updated! ✨");
+        return;
+      }
+      const goalId = 'demo_' + Math.random().toString(36).substr(2, 9);
+      const goal: Goal = {
+        id: goalId,
+        ownerUid: user.uid,
+        collaborators: [user.uid],
+        name: newGoal.name,
+        targetAmount: target,
+        currentAmount: 0,
+        deadline: newGoal.deadline,
+        createdAt: new Date().toISOString()
+      };
+      setGoals(prev => [goal, ...prev]);
+      hapticMedium();
+      setNewGoal({ name: '', target: '', deadline: '' });
+      setIsGoalModalOpen(false);
+      setToast("New dream goal planted! 🌱");
       return;
     }
 
@@ -985,6 +1095,20 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
+    if (isDemoMode) {
+      setTransactions(prev => [transaction, ...prev]);
+      setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, currentAmount: newAmount } : g));
+      if (reached100) {
+        triggerGoalCelebration(goal.name);
+      } else {
+        hapticSuccess();
+        setToast("Added funds successfully! 💸");
+      }
+      setFundData({ goalId: '', amount: '', contributor: 'Me' });
+      setIsFundModalOpen(false);
+      return;
+    }
+
     try {
       await setDoc(doc(db, 'transactions', transactionId), transaction);
       await setDoc(doc(db, 'goals', goal.id), {
@@ -1031,6 +1155,7 @@ export default function App() {
       reminder: newEvent.reminder,
       reminderMinutes: newEvent.reminderMinutes,
       tags: newEvent.tags,
+      mood: newEvent.mood || 'Romantic',
       isMystery: newEvent.isMystery,
       mysteryRevealed: false,
       mysteryClue: newEvent.mysteryClue,
@@ -1038,6 +1163,40 @@ export default function App() {
       rsvps: { [user.uid]: 'Going' },
       createdAt: new Date().toISOString()
     };
+
+    if (isDemoMode) {
+      setEvents(prev => [...prev, event]);
+      hapticMedium();
+
+      if (newEvent.reminder && newEvent.date) {
+        const eventDateTime = new Date(`${newEvent.date}T${newEvent.time || '18:00'}`);
+        const reminderTime = new Date(eventDateTime.getTime() - (newEvent.reminderMinutes || 15) * 60000);
+        scheduleDateReminder({
+          id: Math.floor(Math.random() * 100000),
+          title: `Date Night Reminder: ${newEvent.title}`,
+          body: `Upcoming at ${newEvent.time || 'tonight'}! ${newEvent.location ? `Location: ${newEvent.location}` : ''}`,
+          scheduleDate: reminderTime
+        });
+      }
+
+      setNewEvent({ 
+        title: '', 
+        description: '', 
+        date: '', 
+        time: '', 
+        location: '', 
+        goalId: '', 
+        reminder: false, 
+        reminderMinutes: 15, 
+        tags: [],
+        mood: 'Romantic',
+        isMystery: false,
+        mysteryClue: ''
+      });
+      setIsEventModalOpen(false);
+      setToast(newEvent.isMystery ? "Mystery date planned! Shhh... 🤫" : "Date added to planner! 🥂");
+      return;
+    }
 
     try {
       await setDoc(doc(db, 'events', eventId), event);
@@ -1065,6 +1224,7 @@ export default function App() {
         reminder: false, 
         reminderMinutes: 15, 
         tags: [],
+        mood: 'Romantic',
         isMystery: false,
         mysteryClue: ''
       });
@@ -1084,6 +1244,7 @@ export default function App() {
         reminder: false, 
         reminderMinutes: 15, 
         tags: [],
+        mood: 'Romantic',
         isMystery: false,
         mysteryClue: ''
       });
@@ -1351,12 +1512,18 @@ export default function App() {
 
   const confirmDeleteGoal = async () => {
     if (!goalToDelete) return;
+    const targetId = goalToDelete;
+    setGoalToDelete(null);
+    setGoals(prev => prev.filter(g => g.id !== targetId));
+    if (isDemoMode) {
+      setToast("Goal deleted successfully.");
+      return;
+    }
     try {
-      await deleteDoc(doc(db, 'goals', goalToDelete));
-      setGoalToDelete(null);
+      await deleteDoc(doc(db, 'goals', targetId));
       setToast("Goal deleted successfully.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `goals/${goalToDelete}`);
+      handleFirestoreError(err, OperationType.DELETE, `goals/${targetId}`);
     }
   };
 
@@ -1366,12 +1533,18 @@ export default function App() {
 
   const confirmDeleteEvent = async () => {
     if (!eventToDelete) return;
+    const targetId = eventToDelete;
+    setEventToDelete(null);
+    setEvents(prev => prev.filter(e => e.id !== targetId));
+    if (isDemoMode) {
+      setToast("Date deleted successfully.");
+      return;
+    }
     try {
-      await deleteDoc(doc(db, 'events', eventToDelete));
-      setEventToDelete(null);
+      await deleteDoc(doc(db, 'events', targetId));
       setToast("Date deleted successfully.");
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `events/${eventToDelete}`);
+      handleFirestoreError(err, OperationType.DELETE, `events/${targetId}`);
     }
   };
 
@@ -1460,15 +1633,34 @@ export default function App() {
 
   const handleArchiveGoal = async (goalId: string) => {
     if (!user) return;
+    const target = goals.find(g => g.id === goalId);
+    if (!target) return;
+    const updated: Goal = { ...target, archived: true, archivedAt: new Date().toISOString() };
     try {
-      await deleteDoc(doc(db, 'goals', goalId));
-      setGoals(prev => prev.filter(g => g.id !== goalId));
-      setToast("Goal archived.");
+      await setDoc(doc(db, 'goals', goalId), updated);
+      setGoals(prev => prev.map(g => g.id === goalId ? updated : g));
+      setToast("Goal moved to archive. 📦");
     } catch (err) {
-      setGoals(prev => prev.filter(g => g.id !== goalId));
-      setToast("Goal archived.");
+      setGoals(prev => prev.map(g => g.id === goalId ? updated : g));
+      setToast("Goal moved to archive. 📦");
     }
     setGoalToAdjust(null);
+  };
+
+  const handleUnarchiveGoal = async (goalId: string) => {
+    if (!user) return;
+    const target = goals.find(g => g.id === goalId);
+    if (!target) return;
+    const updated: Goal = { ...target, archived: false };
+    delete updated.archivedAt;
+    try {
+      await setDoc(doc(db, 'goals', goalId), updated);
+      setGoals(prev => prev.map(g => g.id === goalId ? updated : g));
+      setToast("Goal restored to active dreams! 🌱");
+    } catch (err) {
+      setGoals(prev => prev.map(g => g.id === goalId ? updated : g));
+      setToast("Goal restored to active dreams! 🌱");
+    }
   };
 
   const handleUpdatePartner = async (updated: Partial<RelationshipData>) => {
@@ -1537,7 +1729,11 @@ export default function App() {
 
 
   const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => {
+    let list = [...events];
+    if (plannerMoodFilter !== 'all') {
+      list = list.filter(e => (e.mood || 'Romantic') === plannerMoodFilter);
+    }
+    return list.sort((a, b) => {
       if (plannerSort === 'date') {
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       }
@@ -1551,7 +1747,7 @@ export default function App() {
       }
       return 0;
     });
-  }, [events, plannerSort]);
+  }, [events, plannerSort, plannerMoodFilter]);
 
   const handleSuggestIdea = async () => {
     if (!user) return;
@@ -2275,7 +2471,8 @@ export default function App() {
 
                   {/* Primary Savings Goal Card */}
                   {goals.length > 0 && (() => {
-                    const primaryGoal = goals[0];
+                    const activeGoals = goals.filter(g => !g.archived);
+                    const primaryGoal = activeGoals[0] || goals[0];
                     const pace = getGoalPaceAnalysis(primaryGoal, transactions);
                     const percent = Math.min((primaryGoal.currentAmount / primaryGoal.targetAmount) * 100, 100);
                     const isCompleted = pace.isCompleted;
@@ -2521,9 +2718,14 @@ export default function App() {
                     {nextPlannedDate ? (
                       <div className="space-y-2 pt-1">
                         <div>
-                          <h5 className="text-lg sm:text-xl font-serif font-bold text-on-surface">
-                            {nextPlannedDate.isMystery && !nextPlannedDate.mysteryRevealed ? 'Mystery Date Night ✨' : nextPlannedDate.title}
-                          </h5>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h5 className="text-lg sm:text-xl font-serif font-bold text-on-surface">
+                              {nextPlannedDate.isMystery && !nextPlannedDate.mysteryRevealed ? 'Mystery Date Night ✨' : nextPlannedDate.title}
+                            </h5>
+                            {nextPlannedDate.mood && (
+                              <MoodBadge mood={nextPlannedDate.mood} size="sm" />
+                            )}
+                          </div>
                           <div className="flex flex-wrap items-center gap-3 text-xs text-outline mt-1.5">
                             <span className="flex items-center gap-1 text-on-surface">
                               <Calendar className="w-3.5 h-3.5 text-primary" />
@@ -2580,20 +2782,31 @@ export default function App() {
                         <h4 className="font-serif text-xl sm:text-2xl font-bold">Our Dreams</h4>
                         <p className="text-xs text-outline">Shared goals & milestones</p>
                       </div>
-                      <button 
-                        onClick={() => {
-                          setEditingGoal(null);
-                          setNewGoal({ name: '', target: '', deadline: '' });
-                          setIsGoalModalOpen(true);
-                        }}
-                        className="bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/20 transition-colors cursor-pointer min-h-[36px]"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> New Dream
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => {
+                            hapticLight();
+                            setView('dreams');
+                          }}
+                          className="text-xs font-semibold text-outline hover:text-primary transition-colors cursor-pointer px-2.5 py-1.5 rounded-lg hover:bg-surface-container"
+                        >
+                          View All ({goals.length})
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setEditingGoal(null);
+                            setNewGoal({ name: '', target: '', deadline: '' });
+                            setIsGoalModalOpen(true);
+                          }}
+                          className="bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/20 transition-colors cursor-pointer min-h-[36px]"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> New Dream
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-3">
-                      {goals.slice(1).map((goal) => {
+                      {goals.filter(g => !g.archived).slice(1).map((goal) => {
                         const pace = getGoalPaceAnalysis(goal, transactions);
                         const percent = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
                         const isCompleted = pace.isCompleted;
@@ -2887,6 +3100,7 @@ export default function App() {
                   reminder: true,
                   reminderMinutes: 60,
                   tags: ['Date Spot', 'Romantic'],
+                  mood: info.mood || 'Romantic',
                   isMystery: false,
                   mysteryClue: ''
                 });
@@ -2932,6 +3146,7 @@ export default function App() {
                     reminder: true,
                     reminderMinutes: 60,
                     tags: ['Date Spot', 'Romantic'],
+                    mood: info.mood || 'Romantic',
                     isMystery: false,
                     mysteryClue: ''
                   });
@@ -3039,6 +3254,22 @@ export default function App() {
                       <motion.button 
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          hapticLight();
+                          const activeMood: DateMood = plannerMoodFilter !== 'all' ? plannerMoodFilter : 'Romantic';
+                          setRomanticTipsMood(activeMood);
+                          setIsRomanticTipsModalOpen(true);
+                        }}
+                        className="px-3.5 py-2.5 rounded-full bg-secondary/10 text-secondary hover:bg-secondary/20 transition-all min-h-[44px] flex items-center gap-1.5 border border-secondary/25 shadow-xs text-xs font-bold cursor-pointer"
+                        title="Romantic Tips & Relationship Exercises"
+                        aria-label="Romantic Tips & Relationship Exercises"
+                      >
+                        <MessageCircleHeart className="w-4 h-4 text-secondary shrink-0" />
+                        <span className="hidden sm:inline">Romantic Tips</span>
+                      </motion.button>
+                      <motion.button 
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => { hapticLight(); setIsScrapbookModalOpen(true); }}
                         className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center border border-outline-variant/10 shadow-sm"
                         title="Couple Scrapbook"
@@ -3072,6 +3303,7 @@ export default function App() {
                             reminder: false, 
                             reminderMinutes: 15, 
                             tags: [],
+                            mood: 'Romantic',
                             isMystery: false,
                             mysteryClue: ''
                           });
@@ -3087,6 +3319,56 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Planner Date Mood Filter Bar (Grid & List modes) */}
+              {plannerMode !== 'calendar' && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar pt-1">
+                  <span className="text-[10px] uppercase font-bold text-outline tracking-wider shrink-0 flex items-center gap-1 mr-1">
+                    <Sparkles className="w-3 h-3 text-secondary" /> Vibe:
+                  </span>
+                  <button
+                    onClick={() => { hapticLight(); setPlannerMoodFilter('all'); }}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                      plannerMoodFilter === 'all'
+                        ? 'bg-secondary text-on-secondary border-secondary shadow-xs'
+                        : 'bg-surface-container text-outline border-outline-variant/20 hover:text-on-surface'
+                    }`}
+                  >
+                    All Dates ({events.length})
+                  </button>
+                  {DATE_MOODS.map(mood => {
+                    const count = events.filter(e => (e.mood || 'Romantic') === mood.id).length;
+                    const isSelected = plannerMoodFilter === mood.id;
+                    return (
+                      <button
+                        key={mood.id}
+                        onClick={() => { hapticLight(); setPlannerMoodFilter(mood.id); }}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                          isSelected
+                            ? `${mood.activeClass} font-bold shadow-xs`
+                            : 'bg-surface-container text-outline border-outline-variant/20 hover:text-on-surface'
+                        }`}
+                      >
+                        <span>{mood.emoji}</span>
+                        <span>{mood.label}</span>
+                        {count > 0 && <span className="text-[10px] opacity-75">({count})</span>}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => {
+                      hapticLight();
+                      const activeMood: DateMood = plannerMoodFilter !== 'all' ? plannerMoodFilter : 'Romantic';
+                      setRomanticTipsMood(activeMood);
+                      setIsRomanticTipsModalOpen(true);
+                    }}
+                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold text-secondary bg-secondary/10 hover:bg-secondary/20 border border-secondary/30 transition-all shrink-0 cursor-pointer ml-auto"
+                  >
+                    <MessageCircleHeart className="w-3.5 h-3.5" />
+                    <span>{plannerMoodFilter !== 'all' ? `${plannerMoodFilter} Tips` : 'Couple Tips'}</span>
+                  </button>
+                </div>
+              )}
 
               <div className="space-y-6">
                 {plannerMode === 'calendar' ? (
@@ -3105,6 +3387,7 @@ export default function App() {
                         reminder: false, 
                         reminderMinutes: 15, 
                         tags: [],
+                        mood: 'Romantic',
                         isMystery: false,
                         mysteryClue: ''
                       });
@@ -3202,12 +3485,27 @@ export default function App() {
                               
                               <div className="space-y-4 flex-1 pr-0 sm:pr-8">
                                 <div className="space-y-2">
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-3 flex-wrap">
                                     <h3 className={`text-2xl sm:text-3xl font-serif leading-tight tracking-tight transition-all duration-500 ${
                                       event.completed ? 'text-outline line-through' : 'text-on-surface'
                                     }`}>
                                       {isMysteryLocked ? 'Mystery Date Night ✨' : event.title}
                                     </h3>
+                                    {event.mood && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          hapticLight();
+                                          setRomanticTipsMood(event.mood as DateMood);
+                                          setIsRomanticTipsModalOpen(true);
+                                        }}
+                                        title={`View relationship exercises for ${event.mood} dates`}
+                                        className="cursor-pointer hover:scale-105 transition-transform"
+                                      >
+                                        <MoodBadge mood={event.mood} size="sm" />
+                                      </button>
+                                    )}
                                     {event.completed && (
                                       <motion.div
                                         initial={{ scale: 0, opacity: 0 }}
@@ -3397,6 +3695,38 @@ export default function App() {
               onUpdateProfileAvatar={handleUpdateProfileAvatar}
             />
           )}
+
+          {view === 'dreams' && (
+            <DreamsView
+              goals={goals}
+              transactions={transactions}
+              onBack={() => setView('home')}
+              onNewDream={() => {
+                setEditingGoal(null);
+                setNewGoal({ name: '', target: '', deadline: '' });
+                setIsGoalModalOpen(true);
+              }}
+              onRecordContribution={(goal) => {
+                setFundData({ goalId: goal.id, amount: '', contributor: 'Me' });
+                setIsFundModalOpen(true);
+              }}
+              onAdjustGoal={(goal) => {
+                setGoalToAdjust(goal);
+              }}
+              onEditGoal={(goal) => {
+                setEditingGoal(goal);
+                setNewGoal({
+                  name: goal.name,
+                  target: goal.targetAmount.toString(),
+                  deadline: goal.deadline,
+                });
+                setIsGoalModalOpen(true);
+              }}
+              onArchiveGoal={handleArchiveGoal}
+              onUnarchiveGoal={handleUnarchiveGoal}
+              onDeleteGoal={deleteGoal}
+            />
+          )}
         </AnimatePresence>
       </main>
 
@@ -3444,9 +3774,23 @@ export default function App() {
                     onClick={() => {
                       hapticLight();
                       setIsMenuOpen(false);
+                      setView('dreams');
+                    }}
+                    className="w-full flex items-center gap-3.5 p-3 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group cursor-pointer"
+                  >
+                    <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                      <Target className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-bold text-xs">Our Dreams & Goals</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      hapticLight();
+                      setIsMenuOpen(false);
                       setView('scrapbook');
                     }}
-                    className="w-full flex items-center gap-3.5 p-3 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group"
+                    className="w-full flex items-center gap-3.5 p-3 rounded-2xl hover:bg-primary/10 text-on-surface transition-colors group cursor-pointer"
                   >
                     <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
                       <Camera className="w-4 h-4 text-primary" />
@@ -3814,6 +4158,62 @@ export default function App() {
                       <option key={g.id} value={g.id} className="bg-surface">{g.name}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Date Mood & Vibe Selector */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-outline flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-secondary" /> Date Mood & Vibe
+                    </label>
+                    <span className="text-[11px] font-semibold text-primary">
+                      {editingEvent?.mood || newEvent.mood || 'Romantic'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {DATE_MOODS.map(mood => {
+                      const isSelected = editingEvent 
+                        ? (editingEvent.mood || 'Romantic') === mood.id 
+                        : (newEvent.mood || 'Romantic') === mood.id;
+                      return (
+                        <button
+                          key={mood.id}
+                          type="button"
+                          onClick={() => {
+                            hapticLight();
+                            if (editingEvent) {
+                              setEditingEvent({ ...editingEvent, mood: mood.id });
+                            } else {
+                              setNewEvent({ ...newEvent, mood: mood.id });
+                            }
+                          }}
+                          className={`py-2 px-1.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer min-h-[50px] ${
+                            isSelected 
+                              ? `${mood.activeClass} shadow-xs ring-2 ring-primary/30` 
+                              : 'bg-surface-container-high/60 text-outline border-outline-variant/20 hover:text-on-surface hover:border-outline-variant/40'
+                          }`}
+                        >
+                          <span className="text-base">{mood.emoji}</span>
+                          <span className="text-[11px] font-medium leading-none">{mood.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        hapticLight();
+                        const currentMood = (editingEvent?.mood || newEvent.mood || 'Romantic') as DateMood;
+                        setRomanticTipsMood(currentMood);
+                        setIsRomanticTipsModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-secondary hover:text-secondary/80 bg-secondary/10 hover:bg-secondary/15 px-3 py-1.5 rounded-xl border border-secondary/25 transition-all cursor-pointer"
+                    >
+                      <MessageCircleHeart className="w-3.5 h-3.5 text-secondary" />
+                      <span>View 3 {editingEvent?.mood || newEvent.mood || 'Romantic'} Connection Exercises</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -4578,6 +4978,13 @@ export default function App() {
         onPlanDateFromBucket={handlePlanDateFromBucket}
         onSaveGoalFromBucket={handleSaveGoalFromBucket}
         onRemoveBucketItem={handleRemoveBucketItem}
+      />
+
+      {/* Romantic Tips & Connection Exercises Modal */}
+      <RomanticTipsModal
+        isOpen={isRomanticTipsModalOpen}
+        onClose={() => setIsRomanticTipsModalOpen(false)}
+        initialMood={romanticTipsMood}
       />
 
       {/* Bottom Navigation (Mobile & Tablet) */}

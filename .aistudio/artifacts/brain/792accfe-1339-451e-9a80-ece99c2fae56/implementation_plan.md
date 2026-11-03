@@ -165,7 +165,50 @@ All 15 areas requested for DateFund have been implemented, tested, and validated
 | **768px** | iPad / Tablet | PASS | 2-column dream and activity feed, responsive calendar cells |
 | **1280px+**| Desktop | PASS | 12-column universal dashboard grid with balance hero and dreams |
 
+---
+
+## 14. Multi-Province Coverage & GPS Proximity (All 9 SA Provinces)
+- **Nationwide Coverage**:
+  - `src/utils/provinces.ts` maps all 9 South African provinces: Western Cape, Gauteng, KwaZulu-Natal, Mpumalanga, Eastern Cape, North West, Free State, Limpopo, and Northern Cape.
+  - Replaced Johannesburg-only defaults with curated date spots across vineyards, coastal hideaways, Drakensberg viewpoints, mountain retreats, and stargazing observatories.
+  - Backend Gemini discovery route (`server.ts`) receives user GPS coordinates, nearest province name, and selected date mood, generating local recommendations close to the user rather than defaulting to Johannesburg.
+- **Proximity & Distance**:
+  - Computes distance from user via Haversine formula (`calculateDistanceKm`) and displays proximity pills (e.g. `📍 4.2 km away`) in DiscoverView and GoogleDateMap.
+  - One-tap `📍 Near Me` filter automatically detects the user's nearest province and pans/zooms to their vicinity.
+
+---
+
+## 15. Date Moods & Vibe Badges
+- **6 Romantic Moods**:
+  - `src/utils/moods.ts` and `src/components/ui/MoodBadge.tsx` define 6 vibes: `🌹 Romantic`, `🌲 Adventurous`, `☕ Cozy`, `🎉 Playful`, `✨ Luxurious`, and `🌊 Relaxed`.
+- **Interactive Mood Selection & Indicators**:
+  - Event creation and editing modals include 1-tap mood chips with emojis and color feedback.
+  - Color-coded mood badges displayed on Planner grid and list cards, the Next Planned Date dashboard card, and agenda drawers.
+  - Planner toolbar includes a vibe filter row (`All Dates`, `🌹 Romantic`, etc.) to filter dates by vibe with live counts.
+  - Calendar month grid renders mood emojis on day pills and color-coded dots on mobile.
+
+---
+
+## 16. Romantic Tips & Communication Exercises (Gemini-Powered)
+- **Server-Side Gemini Generation (`/api/ai/romantic-tips`)**:
+  - Uses `@google/genai` with `gemini-3.8-flash` on the Express server to generate 3 actionable, emotionally intelligent connection exercises based on the selected mood (`Romantic`, `Adventurous`, `Cozy`, `Playful`, `Luxurious`, `Relaxed`).
+  - Structured schema guarantees exercise title, category, time estimate, psychological context, 2-3 concrete steps for tonight, and a deep conversation starter question.
+  - Comprehensive fallback bank for all 6 moods ensures rich, zero-friction guidance even during network disruptions.
+- **Dedicated Modal (`src/components/modals/RomanticTipsModal.tsx`)**:
+  - Accessible dialog displaying the active mood badge and 3 structured exercise cards with step checklists.
+  - Interactive "Switch Vibe" tabs allowing couples to explore exercises for any mood without closing the dialog.
+  - One-tap "Copy Question" action for conversation starters with tactile visual and haptic feedback.
+  - Quick refresh button (`<RefreshCw />`) to generate fresh exercises on demand.
+- **Planner Integration**:
+  - Prominent "Romantic Tips" action in the Planner top toolbar and quick link in the vibe filter bar.
+  - Interactive "View Connection Exercises" shortcut directly in the date creation and editing modals.
+  - Clickable mood badge in Planner date cards to view exercises specifically tailored for that date night.
+
+---
+
 ### Compilation & Linting Status
 - `npm run lint` (`tsc --noEmit`): **0 errors**
 - `npm run build` (`vite build`): **0 errors (Build Succeeded)**
 - HMR & Dev Server: **Port 3000 Healthy**
+
+
