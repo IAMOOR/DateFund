@@ -21,6 +21,7 @@ export default defineConfig(({mode}) => {
             'vendor-maps': ['@vis.gl/react-google-maps'],
             'vendor-motion': ['motion/react'],
             'vendor-icons': ['lucide-react'],
+            'vendor-charts': ['recharts'],
           },
         },
       },

@@ -77,6 +77,7 @@ import HistoryView from './components/views/HistoryView';
 import DiscoverView from './components/views/DiscoverView';
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
+import { GoalPaceChart } from './components/goals/GoalPaceChart';
 import { formatRand, formatDateShort, calculateGoalPace } from './utils/formatters';
 import { Goal, Transaction, Event, DateMemory, BucketListItem, RelationshipData } from './types';
 import { hapticLight, hapticMedium, hapticSuccess, hapticCelebration } from './utils/haptics';
@@ -2487,6 +2488,13 @@ export default function App() {
                             </div>
                           </div>
                         )}
+
+                        {/* Weekly Contributions vs Required Savings Recharts Visualization */}
+                        <GoalPaceChart
+                          goal={primaryGoal}
+                          transactions={transactions}
+                          className="mt-4"
+                        />
                       </div>
                     );
                   })()}
