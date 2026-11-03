@@ -1,5 +1,6 @@
 {
   "name": "DateFund",
   "description": "Your editorial romance dashboard for shared savings and date planning.",
-  "requestFramePermissions": ["geolocation", "notifications"]
+  "requestFramePermissions": ["geolocation", "notifications"],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

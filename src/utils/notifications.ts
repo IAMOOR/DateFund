@@ -1,0 +1,62 @@
+import { LocalNotifications } from '@capacitor/local-notifications';
+
+export async function requestNotificationPermissions(): Promise<boolean> {
+  try {
+    const status = await LocalNotifications.requestPermissions();
+    if (status.display === 'granted') return true;
+  } catch {
+    // Fall back to web Notification API
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') return true;
+      if (Notification.permission !== 'denied') {
+        const perm = await Notification.requestPermission();
+        return perm === 'granted';
+      }
+    }
+  }
+  return false;
+}
+
+export async function scheduleDateReminder(options: {
+  id: number;
+  title: string;
+  body: string;
+  scheduleDate: Date;
+}): Promise<void> {
+  const { id, title, body, scheduleDate } = options;
+  if (scheduleDate.getTime() <= Date.now()) {
+    // Date is in the past or right now, trigger immediately if permission allows
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/favicon.ico' });
+      }
+    } catch {}
+    return;
+  }
+
+  try {
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          title,
+          body,
+          id,
+          schedule: { at: scheduleDate },
+          sound: undefined,
+          actionTypeId: '',
+          extra: null,
+        },
+      ],
+    });
+  } catch (err) {
+    // Fallback on web: schedule a setTimeout if within session
+    const delay = scheduleDate.getTime() - Date.now();
+    if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification(title, { body });
+        }
+      }, delay);
+    }
+  }
+}

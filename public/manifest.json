@@ -1,0 +1,21 @@
+{
+  "name": "DateFund",
+  "short_name": "DateFund",
+  "description": "Editorial savings and romantic date concierge for couples.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#e11d48",
+  "icons": [
+    {
+      "src": "https://lh3.googleusercontent.com/aida-public/AB6AXuCI9vqhcwkWHop2yys08rGQQzat2sxu6ZZ3ccAEl78y0LKuYkxl0rz8HC0zEFQzI66P1lWxRJK7p3w3hMX8kAgaXbDc6-lQdwO2632Ap8j_6uqVs7g49OXnVw66TwJyMrPxt3pNM38_HucD5mPSALugnsLnP1oPZQ_5IuIRAb7vUA21Px47ew9NdZDGBaSwvimDqCRNrR1sRpL01CjplTZXcfHvsTAbgMCx0BIbdwfRDTDvCgfQF8-1TwnwlPnAf8jsgoVTnmk23FE",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://lh3.googleusercontent.com/aida-public/AB6AXuCI9vqhcwkWHop2yys08rGQQzat2sxu6ZZ3ccAEl78y0LKuYkxl0rz8HC0zEFQzI66P1lWxRJK7p3w3hMX8kAgaXbDc6-lQdwO2632Ap8j_6uqVs7g49OXnVw66TwJyMrPxt3pNM38_HucD5mPSALugnsLnP1oPZQ_5IuIRAb7vUA21Px47ew9NdZDGBaSwvimDqCRNrR1sRpL01CjplTZXcfHvsTAbgMCx0BIbdwfRDTDvCgfQF8-1TwnwlPnAf8jsgoVTnmk23FE",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

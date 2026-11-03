@@ -51,10 +51,14 @@
   --on-secondary: #003827;
   --on-secondary-container: #003121;
 
-  --on-surface: #e5e2e1;
-  --on-surface-variant: #dcbfc5;
-  --outline: #a48a8f;
+  --on-surface: #f3eff0;
+  --on-surface-variant: #e0cad0;
+  --outline: #bba2a7;
   --outline-variant: #564146;
+
+  --warning-text: #fbbf24;
+  --warning-border: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.15);
 }
 
 :root.light {
@@ -69,7 +73,7 @@
   --primary-container: #ffd9e1;
   --on-primary: #ffffff;
   --on-primary-container: #3f001a;
-  --on-primary-fixed: #3f001a;
+  --on-primary-fixed: #ffffff; /* High contrast white text on berry primary button */
 
   --secondary: #006b4f;
   --secondary-container: #86f8cc;
@@ -77,9 +81,13 @@
   --on-secondary-container: #002116;
 
   --on-surface: #201a1b;
-  --on-surface-variant: #534346;
-  --outline: #857376;
+  --on-surface-variant: #493b3e;
+  --outline: #675659; /* Strong contrast > 5:1 for readable muted text */
   --outline-variant: #d8c2c5;
+
+  --warning-text: #92400e; /* Deep amber/brown with > 5.5:1 contrast on pale bg */
+  --warning-border: #d97706;
+  --warning-bg: rgba(245, 158, 11, 0.15);
 }
 
 @layer base {
@@ -113,3 +121,13 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+

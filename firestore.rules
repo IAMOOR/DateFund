@@ -102,18 +102,41 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
 
+    function isRecent(ts) {
+      return isValidTimestamp(ts) && 
+             duration.value(request.time - time.date(ts)).isLow();
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "thabomashao10@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function fieldUnchanged(field) {
+      return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email']) &&
              data.uid == request.auth.uid &&
              isValidEmail(data.email) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500));
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('role' in data) || (data.role in ['user', 'admin'])) &&
+             (!('createdAt' in data) || isValidTimestamp(data.createdAt));
     }
 
     function isValidGoalCreate(data) {
       return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
              data.ownerUid == request.auth.uid &&
              data.collaborators is list &&
+             data.collaborators.size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.targetAmount is number && data.targetAmount > 0 &&
              data.currentAmount is number &&
@@ -125,6 +148,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'ownerUid', 'collaborators', 'name', 'targetAmount', 'currentAmount', 'deadline', 'createdAt']) &&
              data.ownerUid == resource.data.ownerUid &&
              data.collaborators is list &&
+             data.collaborators.size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.targetAmount is number && data.targetAmount > 0 &&
              data.currentAmount is number &&
@@ -135,8 +159,8 @@ service cloud.firestore {
     function isValidTransaction(data) {
       return data.keys().hasAll(['id', 'ownerUid', 'goalId', 'goalName', 'amount', 'date', 'contributor', 'type', 'createdAt']) &&
              data.ownerUid == request.auth.uid &&
-             data.goalId is string &&
-             data.goalName is string &&
+             data.goalId is string && data.goalId.size() < 100 &&
+             data.goalName is string && data.goalName.size() < 200 &&
              data.amount is number &&
              isValidDate(data.date) &&
              data.contributor in ['Me', 'Them'] &&
@@ -150,14 +174,14 @@ service cloud.firestore {
              data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
              isValidDate(data.date) &&
              (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
-             (!('time' in data) || (data.time is string)) &&
+             (!('time' in data) || (data.time is string && data.time.size() <= 20)) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 500)) &&
              (!('reminder' in data) || (data.reminder is bool)) &&
              (!('reminderMinutes' in data) || (data.reminderMinutes is number)) &&
              (!('reminderSent' in data) || (data.reminderSent is bool)) &&
-             (!('tags' in data) || (data.tags is list)) &&
-             (!('collaborators' in data) || (data.collaborators is list)) &&
-             (!('rsvps' in data) || (data.rsvps is map)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('collaborators' in data) || (data.collaborators is list && data.collaborators.size() <= 10)) &&
+             (!('rsvps' in data) || (data.rsvps is map && data.rsvps.size() <= 10)) &&
              isValidTimestamp(data.createdAt);
     }
 
@@ -166,38 +190,47 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    fieldUnchanged('uid') && fieldUnchanged('createdAt') &&
+                    (fieldUnchanged('role') || isAdmin());
     }
 
     match /goals/{goalId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.ownerUid || 
-        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]))
+        (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid])) ||
+        isAdmin()
       );
       allow create: if isAuthenticated() && isValidGoalCreate(request.resource.data);
       allow update: if isAuthenticated() && (
-        (request.auth.uid == resource.data.ownerUid && isValidGoalUpdate(request.resource.data)) ||
+        (request.auth.uid == resource.data.ownerUid && isValidGoalUpdate(request.resource.data) && 
+         fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt')) ||
         (resource.data.keys().hasAny(['collaborators']) && resource.data.collaborators.hasAny([request.auth.uid]) && 
          isValidGoalUpdate(request.resource.data) &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentAmount', 'collaborators']))
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentAmount', 'collaborators']) &&
+         fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt')) ||
+        isAdmin()
       );
-      allow delete: if isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.ownerUid || isAdmin());
     }
 
     match /transactions/{transactionId} {
-      allow read: if isDocOwner();
+      allow read: if isDocOwner() || isAdmin();
       allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
-      allow update: if isDocOwner() && isValidTransaction(request.resource.data);
-      allow delete: if isDocOwner();
+      allow update: if (isDocOwner() || isAdmin()) && isValidTransaction(request.resource.data) &&
+                    fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt');
+      allow delete: if isDocOwner() || isAdmin();
     }
 
     match /events/{eventId} {
-      allow read: if isDocOwner();
+      allow read: if isDocOwner() || isAdmin();
       allow create: if isAuthenticated() && isValidEvent(request.resource.data);
-      allow update: if isDocOwner() && isValidEvent(request.resource.data);
-      allow delete: if isDocOwner();
+      allow update: if (isDocOwner() || isAdmin()) && isValidEvent(request.resource.data) &&
+                    fieldUnchanged('id') && fieldUnchanged('ownerUid') && fieldUnchanged('createdAt');
+      allow delete: if isDocOwner() || isAdmin();
     }
 
     // Default deny

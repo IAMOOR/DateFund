@@ -14,26 +14,10 @@ import {
   isToday,
   parseISO
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-
-interface Event {
-  id: string;
-  ownerUid: string;
-  title: string;
-  description?: string;
-  date: string;
-  time?: string;
-  location?: string;
-  goalId?: string;
-  reminder?: boolean;
-  reminderMinutes?: number;
-  reminderSent?: boolean;
-  tags?: string[];
-  collaborators: string[];
-  rsvps?: { [userId: string]: 'Going' | 'Maybe' | 'Not Going' };
-  createdAt: string;
-}
+import { ChevronLeft, ChevronRight, Clock, MapPin, Plus, Calendar as CalendarIcon, CheckCircle2 } from 'lucide-react';
+import { Event } from '../types';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
 
 interface CalendarProps {
   events: Event[];
@@ -44,6 +28,7 @@ interface CalendarProps {
 
 export default function Calendar({ events, userId, onAddEvent, onEditEvent }: CalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth));
@@ -55,116 +40,187 @@ export default function Calendar({ events, userId, onAddEvent, onEditEvent }: Ca
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   const getEventsForDay = (day: Date) => {
-    return events.filter(event => isSameDay(parseISO(event.date), day));
+    return events.filter(event => {
+      try {
+        return isSameDay(parseISO(event.date), day);
+      } catch {
+        return false;
+      }
+    });
   };
 
+  const selectedDayEvents = useMemo(() => {
+    return getEventsForDay(selectedDate);
+  }, [selectedDate, events]);
+
   return (
-    <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden shadow-xl">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-outline-variant/10 bg-surface-container">
-        <h3 className="text-2xl font-serif capitalize">
-          {format(currentMonth, 'MMMM yyyy')}
-        </h3>
-        <div className="flex gap-2">
-          <button 
-            onClick={prevMonth}
-            className="p-2 hover:bg-surface-container-highest rounded-full transition-colors text-outline"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button 
-            onClick={() => setCurrentMonth(new Date())}
-            className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-primary hover:bg-primary/10 rounded-full transition-colors"
-          >
-            Today
-          </button>
-          <button 
-            onClick={nextMonth}
-            className="p-2 hover:bg-surface-container-highest rounded-full transition-colors text-outline"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+    <div className="space-y-4">
+      <div className="bg-surface-container-low rounded-3xl border border-outline-variant/15 overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-outline-variant/10 bg-surface-container">
+          <h3 className="text-xl sm:text-2xl font-serif text-on-surface">
+            {format(currentMonth, 'MMMM yyyy')}
+          </h3>
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={prevMonth}
+              aria-label="Previous month"
+              className="p-2 hover:bg-surface-container-highest rounded-full transition-colors text-outline min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => {
+                const today = new Date();
+                setCurrentMonth(today);
+                setSelectedDate(today);
+              }}
+              className="px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-primary hover:bg-primary/10 rounded-full transition-colors min-h-[36px]"
+            >
+              Today
+            </button>
+            <button 
+              onClick={nextMonth}
+              aria-label="Next month"
+              className="p-2 hover:bg-surface-container-highest rounded-full transition-colors text-outline min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Weekdays */}
+        <div className="grid grid-cols-7 border-b border-outline-variant/10 bg-surface-container/60">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="py-2.5 text-center text-[10px] sm:text-xs uppercase tracking-wider font-semibold text-outline">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Days Grid */}
+        <div className="grid grid-cols-7">
+          {days.map((day, i) => {
+            const dayEvents = getEventsForDay(day);
+            const isCurrentMonth = isSameMonth(day, currentMonth);
+            const isSelected = isSameDay(day, selectedDate);
+            const fullDateLabel = format(day, 'EEEE, d MMMM yyyy');
+            
+            return (
+              <div 
+                key={day.toISOString()}
+                role="button"
+                tabIndex={0}
+                aria-label={`${fullDateLabel}, ${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}
+                aria-selected={isSelected}
+                onClick={() => setSelectedDate(day)}
+                onKeyDown={e => e.key === 'Enter' && setSelectedDate(day)}
+                className={`min-h-[64px] sm:min-h-[96px] p-1.5 sm:p-2 border-r border-b border-outline-variant/10 transition-colors group relative cursor-pointer
+                  ${!isCurrentMonth ? 'bg-surface-container-lowest/20 opacity-50' : 'bg-surface-container-low'}
+                  ${isSelected ? 'ring-2 ring-inset ring-primary bg-primary/5' : 'hover:bg-surface-container-high/40'}
+                  ${i % 7 === 6 ? 'border-r-0' : ''}
+                `}
+              >
+                <div className="flex justify-between items-start mb-1">
+                  <span className={`text-[11px] sm:text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full transition-colors
+                    ${isToday(day) ? 'bg-primary text-on-primary-fixed' : isSelected ? 'bg-secondary text-on-secondary' : isCurrentMonth ? 'text-on-surface' : 'text-outline'}
+                  `}>
+                    {format(day, 'd')}
+                  </span>
+                  
+                  {dayEvents.length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-primary shrink-0 sm:hidden" />
+                  )}
+                </div>
+
+                {/* Desktop/Tablet Event Pills */}
+                <div className="hidden sm:block space-y-1 overflow-y-auto max-h-[60px] no-scrollbar">
+                  {dayEvents.map(event => (
+                    <button
+                      key={event.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditEvent(event);
+                      }}
+                      className="w-full text-left px-1.5 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors border-l-2 border-primary truncate"
+                    >
+                      <span className="text-[10px] font-bold text-primary truncate block leading-tight">
+                        {event.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Mobile Micro Dots */}
+                <div className="sm:hidden flex gap-0.5 flex-wrap justify-center mt-1">
+                  {dayEvents.slice(0, 3).map((_, idx) => (
+                    <div key={idx} className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Weekdays */}
-      <div className="grid grid-cols-7 border-b border-outline-variant/10 bg-surface-container/50">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="py-3 text-center text-[10px] uppercase tracking-widest font-bold text-outline/60">
-            {day}
+      {/* Selected Day Agenda Drawer */}
+      <Card variant="high" padding="md" className="space-y-3">
+        <div className="flex items-center justify-between border-b border-outline-variant/10 pb-3">
+          <div>
+            <h4 className="font-serif text-lg font-bold text-on-surface">
+              {format(selectedDate, 'EEEE, d MMMM yyyy')}
+            </h4>
+            <span className="text-xs text-outline">
+              {selectedDayEvents.length} scheduled couple date{selectedDayEvents.length === 1 ? '' : 's'}
+            </span>
           </div>
-        ))}
-      </div>
 
-      {/* Days Grid */}
-      <div className="grid grid-cols-7">
-        {days.map((day, i) => {
-          const dayEvents = getEventsForDay(day);
-          const isCurrentMonth = isSameMonth(day, currentMonth);
-          
-          return (
-            <div 
-              key={day.toString()}
-              className={`min-h-[120px] p-2 border-r border-b border-outline-variant/10 transition-colors group relative
-                ${!isCurrentMonth ? 'bg-surface-container-lowest/30' : 'bg-surface-container-low'}
-                ${i % 7 === 6 ? 'border-r-0' : ''}
-              `}
-            >
-              <div className="flex justify-between items-start mb-1">
-                <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full transition-colors
-                  ${isToday(day) ? 'bg-primary text-on-primary-fixed' : isCurrentMonth ? 'text-on-surface' : 'text-outline/40'}
-                `}>
-                  {format(day, 'd')}
-                </span>
-                <button 
-                  onClick={() => onAddEvent(format(day, 'yyyy-MM-dd'))}
-                  className="p-1 opacity-0 group-hover:opacity-100 hover:bg-primary/10 rounded-md transition-all text-primary"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={() => onAddEvent(format(selectedDate, 'yyyy-MM-dd'))}
+          >
+            Plan Date on this Day
+          </Button>
+        </div>
 
-              <div className="space-y-1 overflow-y-auto max-h-[80px] no-scrollbar">
-                {dayEvents.map(event => (
-                  <button
-                    key={event.id}
-                    onClick={() => onEditEvent(event)}
-                    className="w-full text-left px-2 py-1 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors border-l-2 border-primary group/event"
-                  >
-                    <div className="text-[10px] font-bold truncate text-primary leading-tight flex items-center gap-1">
-                      {event.title}
-                      {userId && event.rsvps?.[userId] && (
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          event.rsvps[userId] === 'Going' ? 'bg-secondary' : 
-                          event.rsvps[userId] === 'Maybe' ? 'bg-primary' : 'bg-error'
-                        }`} />
-                      )}
-                    </div>
-                    {event.tags && event.tags.length > 0 && (
-                      <div className="flex gap-0.5 mt-0.5">
-                        {event.tags.slice(0, 3).map((_, idx) => (
-                          <div key={idx} className="w-1 h-1 rounded-full bg-primary" />
-                        ))}
-                      </div>
-                    )}
+        {selectedDayEvents.length > 0 ? (
+          <div className="space-y-2 pt-1">
+            {selectedDayEvents.map(event => (
+              <div
+                key={event.id}
+                onClick={() => onEditEvent(event)}
+                className="p-3.5 rounded-2xl bg-surface-container border border-outline-variant/15 hover:border-primary/40 transition-all cursor-pointer flex items-center justify-between gap-3"
+              >
+                <div className="space-y-1 min-w-0">
+                  <h5 className="font-serif text-base font-bold text-on-surface truncate">{event.title}</h5>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-outline">
                     {event.time && (
-                      <div className="text-[8px] text-outline/70 flex items-center gap-0.5">
-                        <Clock className="w-2 h-2" /> {event.time}
-                      </div>
+                      <span className="flex items-center gap-1 text-primary font-medium">
+                        <Clock className="w-3.5 h-3.5" /> {event.time}
+                      </span>
                     )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+                    {event.location && (
+                      <span className="flex items-center gap-1 truncate max-w-[200px]">
+                        <MapPin className="w-3.5 h-3.5 text-secondary" /> {event.location}
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-function Plus({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <Button variant="outline" size="sm" onClick={() => onEditEvent(event)}>
+                  Details
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-outline italic py-2">
+            No dates scheduled for this day. Click above to plan a romantic dinner, getaway, or surprise outing.
+          </p>
+        )}
+      </Card>
+    </div>
   );
 }
