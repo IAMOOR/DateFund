@@ -5,15 +5,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
-import { authenticateUser } from "./server/auth.js";
-import { rateLimitUser, concurrencyLimitUser } from "./server/rateLimit.js";
+import { authenticateUser } from "./server/auth.ts";
+import { rateLimitUser, concurrencyLimitUser } from "./server/rateLimit.ts";
 import {
   validateSuggestDateRequest,
   validateDiscoverSuggestionsRequest,
   validateDiscoverIdeasRequest,
   validateRomanticTipsRequest,
   validateStreamRequest
-} from "./server/validators.js";
+} from "./server/validators.ts";
 
 dotenv.config();
 

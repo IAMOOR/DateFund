@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { createApp } from '../server.js';
-import { setCustomTokenVerifierForTesting } from '../server/auth.js';
-import { MemoryQuotaStore, setCustomQuotaStoreForTesting } from '../server/rateLimit.js';
+import { createApp } from '../server.ts';
+import { setCustomTokenVerifierForTesting } from '../server/auth.ts';
+import { MemoryQuotaStore, setCustomQuotaStoreForTesting } from '../server/rateLimit.ts';
 
 describe('AI Endpoints Security & Rate Limiting', () => {
   let app: any;
