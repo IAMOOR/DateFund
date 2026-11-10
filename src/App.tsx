@@ -90,6 +90,7 @@ import { SA_PROVINCES, getNearestProvince } from './utils/provinces';
 import { hapticLight, hapticMedium, hapticSuccess, hapticCelebration } from './utils/haptics';
 import { scheduleDateReminder, requestNotificationPermissions, cancelAllScheduledReminders } from './utils/notifications';
 import { setupStatusBar } from './utils/statusBar';
+import { App as CapacitorApp } from '@capacitor/app';
 import { getCachedAI, setCachedAI, clearUserAICache } from './utils/aiCache';
 import { suggestDateIdea, getSoloEncouragement, getSoloDateIdea } from './utils/aiClient';
 import { mapGoalDoc, mapTransactionDoc, mapEventDoc, mapBucketItemDoc } from './utils/firestoreUtils';
@@ -388,6 +389,165 @@ export default function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isAvatarMenuOpen]);
+
+  // Android Hardware Back Button & Native Navigation Stack
+  const backHandlerRef = React.useRef({
+    isBreakUpConfirmOpen,
+    isBreakUpSummaryOpen,
+    isRelationshipModalOpen,
+    isRomanticTipsModalOpen,
+    isBucketListModalOpen,
+    isSplitterModalOpen,
+    isInviteModalOpen,
+    isWrappedModalOpen,
+    isMilestonesModalOpen,
+    isScrapbookModalOpen,
+    isProfileModalOpen,
+    isEventModalOpen,
+    isFundModalOpen,
+    isGoalModalOpen,
+    isJoinEventModalOpen,
+    isSuggestionModalOpen,
+    isAvatarMenuOpen,
+    isMenuOpen,
+    view
+  });
+
+  useEffect(() => {
+    backHandlerRef.current = {
+      isBreakUpConfirmOpen,
+      isBreakUpSummaryOpen,
+      isRelationshipModalOpen,
+      isRomanticTipsModalOpen,
+      isBucketListModalOpen,
+      isSplitterModalOpen,
+      isInviteModalOpen,
+      isWrappedModalOpen,
+      isMilestonesModalOpen,
+      isScrapbookModalOpen,
+      isProfileModalOpen,
+      isEventModalOpen,
+      isFundModalOpen,
+      isGoalModalOpen,
+      isJoinEventModalOpen,
+      isSuggestionModalOpen,
+      isAvatarMenuOpen,
+      isMenuOpen,
+      view
+    };
+  }, [
+    isBreakUpConfirmOpen,
+    isBreakUpSummaryOpen,
+    isRelationshipModalOpen,
+    isRomanticTipsModalOpen,
+    isBucketListModalOpen,
+    isSplitterModalOpen,
+    isInviteModalOpen,
+    isWrappedModalOpen,
+    isMilestonesModalOpen,
+    isScrapbookModalOpen,
+    isProfileModalOpen,
+    isEventModalOpen,
+    isFundModalOpen,
+    isGoalModalOpen,
+    isJoinEventModalOpen,
+    isSuggestionModalOpen,
+    isAvatarMenuOpen,
+    isMenuOpen,
+    view
+  ]);
+
+  const lastBackPressRef = React.useRef<number>(0);
+
+  useEffect(() => {
+    let listenerHandle: any = null;
+
+    const setupBackListener = async () => {
+      try {
+        listenerHandle = await CapacitorApp.addListener('backButton', () => {
+          const s = backHandlerRef.current;
+          
+          // 1. Close active modals from top-level to lower-level
+          if (s.isBreakUpConfirmOpen) { setIsBreakUpConfirmOpen(false); return; }
+          if (s.isBreakUpSummaryOpen) { setIsBreakUpSummaryOpen(false); return; }
+          if (s.isRomanticTipsModalOpen) { setIsRomanticTipsModalOpen(false); return; }
+          if (s.isBucketListModalOpen) { setIsBucketListModalOpen(false); return; }
+          if (s.isSplitterModalOpen) { setIsSplitterModalOpen(false); return; }
+          if (s.isInviteModalOpen) { setIsInviteModalOpen(false); return; }
+          if (s.isWrappedModalOpen) { setIsWrappedModalOpen(false); return; }
+          if (s.isMilestonesModalOpen) { setIsMilestonesModalOpen(false); return; }
+          if (s.isScrapbookModalOpen) { setIsScrapbookModalOpen(false); return; }
+          if (s.isProfileModalOpen) { setIsProfileModalOpen(false); return; }
+          if (s.isEventModalOpen) { setIsEventModalOpen(false); return; }
+          if (s.isFundModalOpen) { setIsFundModalOpen(false); return; }
+          if (s.isGoalModalOpen) { setIsGoalModalOpen(false); return; }
+          if (s.isJoinEventModalOpen) { setIsJoinEventModalOpen(false); return; }
+          if (s.isSuggestionModalOpen) { setIsSuggestionModalOpen(false); return; }
+          if (s.isRelationshipModalOpen) { setIsRelationshipModalOpen(false); return; }
+          if (s.isAvatarMenuOpen) { setIsAvatarMenuOpen(false); return; }
+          if (s.isMenuOpen) { setIsMenuOpen(false); return; }
+
+          // 2. If no modal is open and not on home view, go back to home view
+          if (s.view !== 'home') {
+            setView('home');
+            return;
+          }
+
+          // 3. Double-tap to exit on home view
+          const now = Date.now();
+          if (now - lastBackPressRef.current < 2000) {
+            CapacitorApp.exitApp();
+          } else {
+            lastBackPressRef.current = now;
+            setToast('Press back again to exit DateFund');
+          }
+        });
+      } catch {
+        // Graceful fallback on web
+      }
+    };
+
+    setupBackListener();
+
+    return () => {
+      if (listenerHandle && typeof listenerHandle.remove === 'function') {
+        listenerHandle.remove();
+      }
+    };
+  }, []);
+
+  // Deep Link Handling (e.g. datefund://join?eventId=... or https://datefund.app/join?...)
+  useEffect(() => {
+    let urlListener: any = null;
+    const setupUrlListener = async () => {
+      try {
+        urlListener = await CapacitorApp.addListener('appUrlOpen', (event) => {
+          try {
+            const parsed = new URL(event.url);
+            const eventId = parsed.searchParams.get('eventId') || parsed.searchParams.get('id');
+            const goalId = parsed.searchParams.get('goalId');
+            if (eventId) {
+              setJoinEventId(eventId);
+              setIsJoinEventModalOpen(true);
+            } else if (goalId) {
+              setFundData({ goalId, amount: '', contributor: 'Me' });
+              setIsFundModalOpen(true);
+            }
+          } catch (e) {
+            console.debug('Failed to parse deep link URL', e);
+          }
+        });
+      } catch {
+        // No-op on web
+      }
+    };
+    setupUrlListener();
+    return () => {
+      if (urlListener && typeof urlListener.remove === 'function') {
+        urlListener.remove();
+      }
+    };
+  }, [goals]);
 
   // Auth Listener
   useEffect(() => {
@@ -1976,7 +2136,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-on-surface">
       {/* Top Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/10 transition-colors">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/10 transition-colors pt-[max(env(safe-area-inset-top,0px),0px)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex justify-between items-center gap-3 sm:gap-6">
           {/* Brand & Menu */}
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
@@ -2381,7 +2541,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="pt-20 md:pt-24 pb-32 sm:pb-36 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full transition-all duration-300">
+      <main className="pt-[calc(5rem+max(env(safe-area-inset-top,0px),0px))] md:pt-24 pb-32 sm:pb-36 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full transition-all duration-300">
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
@@ -4989,7 +5149,7 @@ export default function App() {
 
       {/* Bottom Navigation (Mobile & Tablet) */}
       <nav 
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-2xl border-t border-outline-variant/15 pb-[max(env(safe-area-inset-bottom,0px),0.65rem)] pt-1 px-2 shadow-[0_-4px_24px_rgba(0,0,0,0.12)]"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/75 backdrop-blur-2xl border-t border-outline-variant/20 dark:border-white/10 pb-[max(env(safe-area-inset-bottom,0px),0.65rem)] pt-1.5 px-2 shadow-[0_-8px_32px_rgba(0,0,0,0.2)]"
         aria-label="Bottom navigation"
       >
         <div className="max-w-md mx-auto grid grid-cols-5 items-center gap-0.5">
@@ -5084,7 +5244,7 @@ function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNo
       aria-label={label}
       aria-current={active ? 'page' : undefined}
     >
-      <div className={`p-1 rounded-lg transition-colors ${active ? 'bg-primary/15' : 'group-hover:bg-surface-container-highest/60'}`}>
+      <div className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${active ? 'bg-primary/20 shadow-xs scale-105' : 'group-hover:bg-surface-container-highest/60'}`}>
         {icon}
       </div>
       <span className={`text-[11px] font-medium tracking-tight mt-0.5 truncate max-w-full leading-tight ${
