@@ -14,7 +14,8 @@ import {
   Check,
   Copy,
   Sparkles,
-  Link2
+  Link2,
+  Trash2
 } from 'lucide-react';
 import { RelationshipData } from '../../types';
 import { formatDateShort } from '../../utils/formatters';
@@ -24,6 +25,7 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { StatusBadge } from '../ui/StatusBadge';
 import { hapticSuccess, hapticLight } from '../../utils/haptics';
+import PrivacyPolicyModal from '../modals/PrivacyPolicyModal';
 
 interface RelationshipSettingsViewProps {
   user: any;
@@ -33,6 +35,7 @@ interface RelationshipSettingsViewProps {
   onDisconnectPartner: () => Promise<void>;
   onOpenInviteModal: () => void;
   onUpdateProfileAvatar: (avatarUrl: string) => Promise<void>;
+  onDeleteAccount?: () => Promise<void>;
 }
 
 const AVATAR_OPTIONS = [
@@ -52,13 +55,18 @@ export default function RelationshipSettingsView({
   onDisconnectPartner,
   onOpenInviteModal,
   onUpdateProfileAvatar,
+  onDeleteAccount,
 }: RelationshipSettingsViewProps) {
   const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
   const [disconnectConfirmationText, setDisconnectConfirmationText] = useState('');
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
 
   const isConnected = Boolean(relationshipData?.partnerEmail || relationshipData?.partnerUid);
   const partnerName = relationshipData?.partnerName || 'Your Partner';
@@ -88,6 +96,19 @@ export default function RelationshipSettingsView({
       setDisconnectConfirmationText('');
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (deleteConfirmationText.trim().toUpperCase() !== 'DELETE' || !onDeleteAccount) return;
+    setIsDeletingAccount(true);
+    try {
+      await onDeleteAccount();
+      hapticSuccess();
+      setIsDeleteAccountModalOpen(false);
+      setDeleteConfirmationText('');
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -140,10 +161,17 @@ export default function RelationshipSettingsView({
               {user?.displayName || 'DateFund Member'}
             </h3>
             <p className="text-xs text-outline truncate">{user?.email || 'Authenticated user'}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <span className="text-[11px] font-semibold text-secondary flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" /> Private & Encrypted
               </span>
+              <button
+                type="button"
+                onClick={() => setIsPrivacyPolicyOpen(true)}
+                className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Privacy Policy & Terms
+              </button>
             </div>
           </div>
         </div>
@@ -240,6 +268,28 @@ export default function RelationshipSettingsView({
             </div>
           </div>
         )}
+      </Card>
+
+      {/* Danger Zone: Account Deletion (Apple Guideline 5.1.1 & Google Play Compliance) */}
+      <Card variant="high" padding="md" className="space-y-4 border-rose-500/20 bg-rose-500/5">
+        <div className="flex items-center gap-2.5 text-rose-600 dark:text-rose-400">
+          <Trash2 className="w-5 h-5 shrink-0" />
+          <h2 className="font-serif text-lg font-bold">Danger Zone: Account Deletion</h2>
+        </div>
+        <p className="text-xs text-outline leading-relaxed">
+          In accordance with privacy standards and app store regulations, you have full control over your data.
+          Deleting your DateFund account permanently erases your personal profile, wishlist memories, unlinks all relationship bonds, and revokes your authentication credentials.
+        </p>
+        <div className="pt-1 flex justify-end">
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<Trash2 className="w-3.5 h-3.5" />}
+            onClick={() => setIsDeleteAccountModalOpen(true)}
+          >
+            Delete DateFund Account
+          </Button>
+        </div>
       </Card>
 
       {/* Disconnect Partner Confirmation Modal */}
@@ -345,6 +395,74 @@ export default function RelationshipSettingsView({
           </div>
         </div>
       </Modal>
+
+      {/* Permanent Account Deletion Confirmation Modal (Apple & Google Play Compliance) */}
+      <Modal
+        isOpen={isDeleteAccountModalOpen}
+        onClose={() => {
+          setIsDeleteAccountModalOpen(false);
+          setDeleteConfirmationText('');
+        }}
+        title="Permanently Delete Account?"
+        description="This action is irreversible and permanently purges your data"
+      >
+        <div className="space-y-4 pt-2">
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-700 dark:text-rose-300 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-sm">
+              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span>Permanent consequences:</span>
+            </div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Your user account, email profile, and sign-in credentials will be deleted immediately.</li>
+              <li>Your personal wishlist, date memories, and private notes will be purged.</li>
+              <li>Any active couple pairing will be permanently unlinked.</li>
+              <li>This action cannot be undone or recovered.</li>
+            </ul>
+          </div>
+
+          <div className="space-y-1.5 text-left">
+            <label htmlFor="delete-account-confirm-input" className="block text-xs font-semibold uppercase tracking-wider text-outline">
+              Type <strong className="text-on-surface font-bold">DELETE</strong> to confirm:
+            </label>
+            <input
+              id="delete-account-confirm-input"
+              type="text"
+              placeholder="DELETE"
+              value={deleteConfirmationText}
+              onChange={e => setDeleteConfirmationText(e.target.value)}
+              className="w-full min-h-[44px] bg-surface-container border border-outline-variant/30 rounded-xl px-3.5 py-2 text-sm text-on-surface outline-none focus:border-rose-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-3">
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => {
+                setIsDeleteAccountModalOpen(false);
+                setDeleteConfirmationText('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              disabled={deleteConfirmationText.trim().toUpperCase() !== 'DELETE'}
+              isLoading={isDeletingAccount}
+              onClick={handleConfirmDeleteAccount}
+            >
+              Permanently Delete Account
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Privacy Policy & Terms Modal */}
+      <PrivacyPolicyModal
+        isOpen={isPrivacyPolicyOpen}
+        onClose={() => setIsPrivacyPolicyOpen(false)}
+      />
     </div>
   );
 }

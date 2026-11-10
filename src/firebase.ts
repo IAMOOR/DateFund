@@ -9,7 +9,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInAnonymously,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  deleteUser
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -140,6 +141,7 @@ export {
   updateDoc, 
   deleteDoc,
   deleteField,
-  increment
+  increment,
+  deleteUser
 };
 export type { User };

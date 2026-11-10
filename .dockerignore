@@ -1,0 +1,11 @@
+node_modules
+dist
+android
+ios
+.git
+.github
+.gmp_cache
+tests
+*.log
+.env
+.env.local

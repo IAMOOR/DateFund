@@ -82,6 +82,7 @@ import DreamsView from './components/views/DreamsView';
 import PartnerChatView from './components/views/PartnerChatView';
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
+import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
 import { GoalPaceChart } from './components/goals/GoalPaceChart';
 import { formatRand, formatDateShort, calculateGoalPace } from './utils/formatters';
 import {
@@ -134,6 +135,7 @@ import {
   deleteField,
   updateDoc,
   increment,
+  deleteUser,
   handleFirestoreError, 
   OperationType,
   User
@@ -315,6 +317,7 @@ export default function App() {
   const [lastTreatedBy, setLastTreatedBy] = useState<'Me' | 'Them'>('Them');
   const [showPassword, setShowPassword] = useState(false);
   const [relationshipData, setRelationshipData] = useState<RelationshipData | undefined>(undefined);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
   const weeklyGrowth = useMemo(() => {
     const oneWeekAgo = new Date();
@@ -2312,6 +2315,71 @@ export default function App() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (isDemoMode) {
+      setToast("Demo Couple account reset.");
+      handleLogout();
+      return;
+    }
+
+    try {
+      // 1. Unlink from partner document if connected
+      if (userProfile?.partnerUid) {
+        try {
+          await updateDoc(doc(db, 'users', userProfile.partnerUid), {
+            partnerUid: deleteField()
+          });
+        } catch (e) {
+          console.warn("Could not unlink partner doc:", e);
+        }
+      }
+
+      // 2. Delete user's bucketList subcollection items
+      try {
+        const bucketSnap = await getDocs(collection(db, 'users', user.uid, 'bucketList'));
+        for (const d of bucketSnap.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (e) {
+        console.warn("Could not delete bucket list items:", e);
+      }
+
+      // 3. Delete user document from Firestore
+      try {
+        await deleteDoc(doc(db, 'users', user.uid));
+      } catch (e) {
+        console.warn("Could not delete user doc:", e);
+      }
+
+      // 4. Delete the Firebase Auth user
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        await deleteUser(currentUser);
+      }
+
+      // 5. Clean up local session, timers, and state
+      cancelAllScheduledReminders();
+      clearUserAICache(user.uid);
+      localStorage.removeItem('datefund_session_user');
+      setUser(null);
+      setUserProfile(null);
+      setGoals([]);
+      setTransactions([]);
+      setEvents([]);
+      setBucketList([]);
+      setView('home');
+      setToast("Your DateFund account and personal data have been permanently deleted.");
+    } catch (err: any) {
+      console.error("Account deletion error:", err);
+      if (err?.code === 'auth/requires-recent-login') {
+        setToast("For security, please sign out and sign in again before deleting your account.");
+      } else {
+        setToast("Failed to delete account completely. Please try again.");
+      }
+    }
+  };
+
   const handleAddAuditCorrection = async (originalTx: Transaction, correctionNote: string) => {
     if (!user) return;
     const correctionId = Math.random().toString(36).substr(2, 9);
@@ -2585,8 +2653,23 @@ export default function App() {
                 {authMode === 'signin' ? 'Sign Up' : 'Sign In'}
               </button>
             </p>
+
+            <div className="mt-6 pt-4 border-t border-outline-variant/10 text-center">
+              <button
+                type="button"
+                onClick={() => setIsPrivacyModalOpen(true)}
+                className="text-xs text-outline hover:text-primary transition-colors cursor-pointer"
+              >
+                Privacy Policy &amp; Terms
+              </button>
+            </div>
           </div>
         </motion.div>
+
+        <PrivacyPolicyModal
+          isOpen={isPrivacyModalOpen}
+          onClose={() => setIsPrivacyModalOpen(false)}
+        />
       </div>
     );
   }
@@ -4398,6 +4481,7 @@ export default function App() {
               onDisconnectPartner={handleDisconnectPartner}
               onOpenInviteModal={() => setIsInviteModalOpen(true)}
               onUpdateProfileAvatar={handleUpdateProfileAvatar}
+              onDeleteAccount={handleDeleteAccount}
             />
           )}
 
