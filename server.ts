@@ -12,7 +12,9 @@ import {
   validateDiscoverSuggestionsRequest,
   validateDiscoverIdeasRequest,
   validateRomanticTipsRequest,
-  validateStreamRequest
+  validateStreamRequest,
+  validateMapConciergeRequest,
+  validateMapWeatherRequest
 } from "./server/validators.ts";
 
 dotenv.config();
@@ -20,12 +22,71 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize server-side Gemini SDK instance securely
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
+// Track keys that returned API_KEY_INVALID so we gracefully fall back without spamming failed requests
+const rejectedApiKeys = new Set<string>();
+let cachedAiKey: string | null = null;
+let cachedAiClient: GoogleGenAI | null = null;
+
+function isPlausibleGeminiApiKey(rawKey: string | undefined): rawKey is string {
+  if (!rawKey) return false;
+  const trimmed = rawKey.trim();
+  if (!trimmed || trimmed.length < 20) return false;
+  const upper = trimmed.toUpperCase();
+  if (
+    upper.includes("YOUR_") ||
+    upper.includes("MY_GEMINI") ||
+    upper.includes("PLACEHOLDER") ||
+    upper === "UNDEFINED" ||
+    upper === "NULL"
+  ) {
+    return false;
+  }
+  if (rejectedApiKeys.has(trimmed)) {
+    return false;
+  }
+  return true;
+}
+
+export function getAiClient(): GoogleGenAI | null {
+  const currentKey = process.env.GEMINI_API_KEY?.trim();
+  if (!isPlausibleGeminiApiKey(currentKey)) {
+    return null;
+  }
+  if (cachedAiClient && cachedAiKey === currentKey) {
+    return cachedAiClient;
+  }
+  cachedAiKey = currentKey;
+  cachedAiClient = new GoogleGenAI({
+    apiKey: currentKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+  return cachedAiClient;
+}
+
+function handleGeminiFallbackError(routeName: string, err: any): void {
+  const rawMessage = typeof err?.message === "string" ? err.message : String(err || "Unknown error");
+  if (rawMessage.includes("API_KEY_INVALID") || rawMessage.includes("API key not valid")) {
+    const currentKey = process.env.GEMINI_API_KEY?.trim();
+    if (currentKey) {
+      rejectedApiKeys.add(currentKey);
+    }
+    console.warn(
+      `[Server] ${routeName}: GEMINI_API_KEY is invalid or not configured in Settings > Secrets. Using curated fallback.`
+    );
+    return;
+  }
+  console.warn(`[Server] ${routeName} fallback activated:`, rawMessage);
+}
+
+// Initial check at startup
+if (!isPlausibleGeminiApiKey(process.env.GEMINI_API_KEY)) {
   console.warn("[Server] GEMINI_API_KEY is not defined. Server AI features will operate with curated romantic fallbacks.");
 }
-export const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+export const ai = getAiClient();
 export const MODEL_NAME = "gemini-3.8-flash";
 export const AI_REQUEST_TIMEOUT_MS = 15000;
 
@@ -87,7 +148,8 @@ export function createApp() {
         tags: ["Romantic", "Scenic", "Wine & Dine"]
       };
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json(fallbackIdea);
       }
 
@@ -100,11 +162,10 @@ The idea should be realistic and align with the goals (e.g., if they are saving 
 Return the response as a JSON object with 'title', 'description', and 'tags' (array of strings).`;
 
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
-              maxOutputTokens: 600,
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.OBJECT,
@@ -126,7 +187,7 @@ Return the response as a JSON object with 'title', 'description', and 'tags' (ar
         }
         return res.json(fallbackIdea);
       } catch (err: any) {
-        console.error("[Server] /api/ai/suggest-date error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/suggest-date", err);
         return res.json(fallbackIdea);
       }
     }
@@ -139,24 +200,22 @@ Return the response as a JSON object with 'title', 'description', and 'tags' (ar
     async (_req: Request, res: Response) => {
       const fallbackAdvice = "Focus on your growth, cherish your peace, and know the best chapters are ahead.";
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json({ text: fallbackAdvice });
       }
 
       try {
         const prompt = "Give a short, uplifting word of encouragement or advice for someone who is focusing on their solo journey and financial independence after a breakup. Keep it under 20 words.";
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
-            contents: prompt,
-            config: {
-              maxOutputTokens: 150
-            }
+            contents: prompt
           })
         );
         return res.json({ text: response.text?.trim() || fallbackAdvice });
       } catch (err: any) {
-        console.error("[Server] /api/ai/solo-advice error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/solo-advice", err);
         return res.json({ text: fallbackAdvice });
       }
     }
@@ -172,18 +231,18 @@ Return the response as a JSON object with 'title', 'description', and 'tags' (ar
         description: "Book an afternoon wheel-throwing ceramic workshop, followed by gourmet pastries, loose-leaf tea, and quiet journaling."
       };
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json(fallbackSolo);
       }
 
       try {
         const prompt = "Suggest one creative and fulfilling solo date idea for someone focusing on self-love and independence. Return as JSON with 'title' and 'description'.";
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
-              maxOutputTokens: 300,
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.OBJECT,
@@ -204,7 +263,7 @@ Return the response as a JSON object with 'title', 'description', and 'tags' (ar
         }
         return res.json(fallbackSolo);
       } catch (err: any) {
-        console.error("[Server] /api/ai/solo-date-idea error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/solo-date-idea", err);
         return res.json(fallbackSolo);
       }
     }
@@ -224,7 +283,8 @@ Return the response as a JSON object with 'title', 'description', and 'tags' (ar
         "Scenic Coastal Kayaking"
       ];
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json({ suggestions: fallbackSuggestions });
       }
 
@@ -239,12 +299,15 @@ Suggest 4 short, catchy search queries (2-4 words each) for romantic date ideas 
 Return a JSON array of strings.`;
 
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
-              maxOutputTokens: 250,
-              responseMimeType: "application/json"
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
             }
           })
         );
@@ -256,7 +319,7 @@ Return a JSON array of strings.`;
         }
         return res.json({ suggestions: fallbackSuggestions });
       } catch (err: any) {
-        console.error("[Server] /api/ai/discover-suggestions error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/discover-suggestions", err);
         return res.json({ suggestions: fallbackSuggestions });
       }
     }
@@ -318,7 +381,8 @@ Return a JSON array of strings.`;
         }
       ];
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json({ items: fallbackItems });
       }
 
@@ -357,11 +421,10 @@ For each spot, return a JSON array of objects with fields:
 - isAiGenerated: true`;
 
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
-              maxOutputTokens: 900,
               responseMimeType: "application/json"
             }
           })
@@ -374,7 +437,7 @@ For each spot, return a JSON array of objects with fields:
         }
         return res.json({ items: fallbackItems });
       } catch (err: any) {
-        console.error("[Server] /api/ai/discover-ideas error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/discover-ideas", err);
         return res.json({ items: fallbackItems });
       }
     }
@@ -438,7 +501,8 @@ For each spot, return a JSON array of objects with fields:
 
       const fallbackForMood = MOOD_FALLBACKS[mood] || MOOD_FALLBACKS.Romantic;
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         return res.json({ mood, tips: fallbackForMood });
       }
 
@@ -453,11 +517,10 @@ Return the response as a JSON object with:
 - tips: an array of exactly 3 objects with title, category, timeEstimate, description, steps (array of 2-3 strings), conversationStarter`;
 
         const response = await runWithTimeout(
-          ai.models.generateContent({
+          client.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
-              maxOutputTokens: 850,
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.OBJECT,
@@ -492,7 +555,7 @@ Return the response as a JSON object with:
         }
         return res.json({ mood, tips: fallbackForMood });
       } catch (err: any) {
-        console.error("[Server] /api/ai/romantic-tips error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/romantic-tips", err);
         return res.json({ mood, tips: fallbackForMood });
       }
     }
@@ -511,7 +574,8 @@ Return the response as a JSON object with:
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders?.();
 
-      if (!ai) {
+      const client = getAiClient();
+      if (!client) {
         res.write(`data: ${JSON.stringify({ text: "Here is your romantic date suggestion: Pack a sunset picnic basket and stargaze tonight." })}\n\n`);
         res.write("data: [DONE]\n\n");
         return res.end();
@@ -519,12 +583,9 @@ Return the response as a JSON object with:
 
       try {
         const responseStream = await runWithTimeout(
-          ai.models.generateContentStream({
+          client.models.generateContentStream({
             model: MODEL_NAME,
-            contents: prompt,
-            config: {
-              maxOutputTokens: 500
-            }
+            contents: prompt
           })
         );
 
@@ -536,10 +597,338 @@ Return the response as a JSON object with:
         res.write("data: [DONE]\n\n");
         res.end();
       } catch (err: any) {
-        console.error("[Server] /api/ai/stream error:", err.message || err);
+        handleGeminiFallbackError("/api/ai/stream", err);
         res.write(`data: ${JSON.stringify({ text: "Enjoy a special candlelit dinner together." })}\n\n`);
         res.write("data: [DONE]\n\n");
         res.end();
+      }
+    }
+  );
+
+  // 8. Natural-Language AI Map Date Concierge Endpoint (Protected with Authentication & Rate Limits)
+  app.post(
+    "/api/ai/map-concierge",
+    ...protectedAiRoute,
+    validateMapConciergeRequest,
+    async (req: Request, res: Response) => {
+      const { prompt, provinceName = "Western Cape", location, budgetRand } = req.body || {};
+
+      const buildFallbackItinerary = (userPrompt: string, province: string) => {
+        const lower = (userPrompt || "").toLowerCase();
+        const isAdventurous = lower.includes("hike") || lower.includes("adventure") || lower.includes("kayak") || lower.includes("outdoor") || lower.includes("safari");
+        const isCozy = lower.includes("cozy") || lower.includes("rain") || lower.includes("coffee") || lower.includes("cafe") || lower.includes("fireplace") || lower.includes("book");
+        const regionLabel = province && province !== "All Provinces" ? province : "Cape Town & Winelands";
+
+        if (isAdventurous) {
+          return {
+            itineraryTitle: `Golden Hour Adventure & Scenic Tasting in ${regionLabel}`,
+            mood: "Adventurous",
+            summary: "An exhilarating outdoor route pairing panoramic coastal or mountain trails with artisanal wood-fired dining at sunset.",
+            estimatedTotalRand: 980,
+            stops: [
+              {
+                title: "Scenic Trail & Lookout Point",
+                searchQuery: `Scenic nature reserve viewpoint ${regionLabel} South Africa`,
+                category: "Adventurous",
+                estimatedCostRand: 180,
+                stayDurationMinutes: 75,
+                tip: "Arrive 90 minutes before sunset for the best golden-hour light and cooler breeze."
+              },
+              {
+                title: "Craft Taproom & Artisanal Platter",
+                searchQuery: `Artisanal brewery or gin tasting ${regionLabel} South Africa`,
+                category: "Adventurous",
+                estimatedCostRand: 350,
+                stayDurationMinutes: 60,
+                tip: "Order a shared tasting flight and sit on the outdoor deck."
+              },
+              {
+                title: "Twilight Rooftop or Wood-Fired Bistro",
+                searchQuery: `Scenic rooftop restaurant ${regionLabel} South Africa`,
+                category: "Romantic",
+                estimatedCostRand: 450,
+                stayDurationMinutes: 90,
+                tip: "Ask for a table facing the western horizon as city lights come alive."
+              }
+            ]
+          };
+        }
+
+        if (isCozy) {
+          return {
+            itineraryTitle: `Velvet Mornings & Fireside Romance in ${regionLabel}`,
+            mood: "Cozy",
+            summary: "A slow, intimate itinerary through specialty coffee roasteries, boutique art spaces, and candlelit fireside dining.",
+            estimatedTotalRand: 890,
+            stops: [
+              {
+                title: "Specialty Roastery & Pastry Pairing",
+                searchQuery: `Artisanal coffee roastery bakery ${regionLabel} South Africa`,
+                category: "Cozy",
+                estimatedCostRand: 190,
+                stayDurationMinutes: 50,
+                tip: "Share a warm almond croissant and single-origin pour-over in a quiet corner."
+              },
+              {
+                title: "Boutique Gallery & Sculpture Garden",
+                searchQuery: `Boutique art gallery garden ${regionLabel} South Africa`,
+                category: "Cozy",
+                estimatedCostRand: 120,
+                stayDurationMinutes: 65,
+                tip: "Stroll slowly and each pick one artwork that reminds you of a shared memory."
+              },
+              {
+                title: "Candlelit Cellar & Fireplace Bistro",
+                searchQuery: `Cozy romantic bistro wine bar ${regionLabel} South Africa`,
+                category: "Romantic",
+                estimatedCostRand: 580,
+                stayDurationMinutes: 105,
+                tip: "Reserve a booth near the fireplace or courtyard fairy lights."
+              }
+            ]
+          };
+        }
+
+        return {
+          itineraryTitle: `Twilight Wine & Candlelit Romance in ${regionLabel}`,
+          mood: "Romantic",
+          summary: "A curated multi-stop romantic journey blending sunset views, estate wine tasting, and intimate fine dining.",
+          estimatedTotalRand: 1350,
+          stops: [
+            {
+              title: "Estate Wine & MCC Tasting Terrace",
+              searchQuery: `Romantic wine estate tasting ${regionLabel} South Africa`,
+              category: "Romantic",
+              estimatedCostRand: 320,
+              stayDurationMinutes: 70,
+              tip: "Start with a chilled Cap Classique on the terrace overlooking the valley."
+            },
+            {
+              title: "Golden Hour Botanical or Sunset Promenade",
+              searchQuery: `Sunset viewpoint botanical garden ${regionLabel} South Africa`,
+              category: "Adventurous",
+              estimatedCostRand: 150,
+              stayDurationMinutes: 50,
+              tip: "Bring a light wrap and pause for a golden-hour couple photo."
+            },
+            {
+              title: "Intimate Courtyard Fine Dining",
+              searchQuery: `Romantic fine dining restaurant ${regionLabel} South Africa`,
+              category: "Romantic",
+              estimatedCostRand: 880,
+              stayDurationMinutes: 110,
+              tip: "Mention your date night when booking to request a secluded candlelit table."
+            }
+          ]
+        };
+      };
+
+      const fallbackItinerary = buildFallbackItinerary(prompt, provinceName);
+
+      const client = getAiClient();
+      if (!client) {
+        return res.json(fallbackItinerary);
+      }
+
+      try {
+        const locationDesc = location && typeof location.lat === "number" && typeof location.lng === "number"
+          ? `User GPS coordinates: (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}) in ${provinceName || "South Africa"}.`
+          : `Selected region: ${provinceName || "South Africa"}.`;
+        const budgetDesc = budgetRand ? `Target couple budget: approximately R ${budgetRand}.` : "";
+
+        const aiPrompt = `You are DateFund's AI Map Architect & Romantic Date Concierge for South Africa.
+The couple described their desired date map experience: "${prompt}"
+${locationDesc}
+${budgetDesc}
+
+Design a realistic, geographically coherent 3-stop date itinerary in South Africa that can be plotted directly on Google Maps using the Places API and connected with turn-by-turn routing.
+For each stop:
+- 'title': Evocative name of the real venue or date stop
+- 'searchQuery': Precise Google Maps Places search query including the real venue name and suburb/city in South Africa so Places API finds the exact spot
+- 'category': Must be one of "Romantic", "Adventurous", or "Cozy"
+- 'estimatedCostRand': Estimated cost in South African Rand (ZAR) for a couple at this stop
+- 'stayDurationMinutes': Recommended time spent at this stop in minutes (e.g., 60, 90)
+- 'tip': One actionable insider tip for couples at this venue`;
+
+        const response = await runWithTimeout(
+          client.models.generateContent({
+            model: MODEL_NAME,
+            contents: aiPrompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  itineraryTitle: { type: Type.STRING },
+                  mood: { type: Type.STRING },
+                  summary: { type: Type.STRING },
+                  estimatedTotalRand: { type: Type.NUMBER },
+                  stops: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        title: { type: Type.STRING },
+                        searchQuery: { type: Type.STRING },
+                        category: { type: Type.STRING },
+                        estimatedCostRand: { type: Type.NUMBER },
+                        stayDurationMinutes: { type: Type.NUMBER },
+                        tip: { type: Type.STRING }
+                      },
+                      required: ["title", "searchQuery", "category", "estimatedCostRand", "stayDurationMinutes", "tip"]
+                    }
+                  }
+                },
+                required: ["itineraryTitle", "mood", "summary", "estimatedTotalRand", "stops"]
+              }
+            }
+          })
+        );
+
+        const cleanText = (response.text || "").replace(/```json\n?|```/g, "").trim();
+        const parsed = JSON.parse(cleanText || "{}");
+        if (parsed.itineraryTitle && Array.isArray(parsed.stops) && parsed.stops.length > 0) {
+          return res.json(parsed);
+        }
+        return res.json(fallbackItinerary);
+      } catch (err: any) {
+        handleGeminiFallbackError("/api/ai/map-concierge", err);
+        return res.json(fallbackItinerary);
+      }
+    }
+  );
+
+  // 9. Google Maps Weather & Golden Hour Sunset Proxy Endpoint
+  app.post(
+    "/api/maps/weather",
+    validateMapWeatherRequest,
+    async (req: Request, res: Response) => {
+      const { lat, lng } = req.body;
+
+      // Calculate astronomical sunset time in South Africa Standard Time (UTC+2)
+      const computeLocalSunsetSAST = (latitude: number, longitude: number): { sunsetTime: string; goldenHourTime: string } => {
+        const now = new Date();
+        const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 0));
+        const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86400000);
+        // Solar declination (degrees)
+        const declination = 23.45 * Math.sin(((2 * Math.PI) / 365) * (dayOfYear - 81));
+        const latRad = (latitude * Math.PI) / 180;
+        const decRad = (declination * Math.PI) / 180;
+        const cosHourAngle = Math.max(-0.95, Math.min(0.95, -Math.tan(latRad) * Math.tan(decRad)));
+        const hourAngleDeg = (Math.acos(cosHourAngle) * 180) / Math.PI;
+        // Solar noon in UTC hours, adjusted for longitude
+        const solarNoonUTC = 12 - longitude / 15;
+        const sunsetUTC = solarNoonUTC + hourAngleDeg / 15;
+        // SAST is UTC+2
+        const sunsetSAST = (sunsetUTC + 2 + 24) % 24;
+        const goldenHourSAST = Math.max(0, sunsetSAST - 0.75);
+
+        const formatDecimalHours = (decHours: number) => {
+          const hrs = Math.floor(decHours);
+          const mins = Math.round((decHours - hrs) * 60);
+          const adjHrs = mins === 60 ? hrs + 1 : hrs;
+          const adjMins = mins === 60 ? 0 : mins;
+          return `${String(adjHrs).padStart(2, "0")}:${String(adjMins).padStart(2, "0")}`;
+        };
+
+        return {
+          sunsetTime: formatDecimalHours(sunsetSAST),
+          goldenHourTime: formatDecimalHours(goldenHourSAST)
+        };
+      };
+
+      const { sunsetTime, goldenHourTime } = computeLocalSunsetSAST(lat, lng);
+
+      // Build deterministic regional weather fallback based on South African latitude/longitude
+      const buildRegionalFallbackWeather = () => {
+        const isCoastal = lat < -32.5 || lng > 30.2;
+        const seed = Math.abs(Math.round(lat * 100 + lng * 100)) % 7;
+        const baseTemp = isCoastal ? 21 + (seed % 5) : 23 + (seed % 6);
+        const conditions = isCoastal
+          ? ["Clear Coastal Breeze", "Sunny & Crisp", "Golden Twilight Skies", "Mild Ocean Air"]
+          : ["Sunny & Warm", "Clear Highveld Skies", "Mild & Pleasant", "Crisp Starlit Evening"];
+        const condition = conditions[seed % conditions.length];
+        const windKmh = isCoastal ? 14 + (seed % 9) : 9 + (seed % 7);
+        const precipProb = seed === 5 ? 20 : 5;
+        const humidity = isCoastal ? 64 : 46;
+
+        return {
+          temperatureC: baseTemp,
+          feelsLikeC: baseTemp,
+          condition,
+          humidity,
+          windKmh,
+          precipProb,
+          uvIndex: 4,
+          isDaytime: true,
+          sunsetTime,
+          goldenHourTime,
+          dateSuitabilityNote:
+            precipProb <= 15 && windKmh <= 22
+              ? `Ideal outdoor & terrace weather — Golden hour begins at ${goldenHourTime}.`
+              : `Breezy evening expected — pack a warm wrap for sunset at ${sunsetTime}.`,
+          source: "regional-estimate"
+        };
+      };
+
+      const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+      if (!mapsApiKey) {
+        return res.json(buildRegionalFallbackWeather());
+      }
+
+      try {
+        const weatherUrl = `https://weather.googleapis.com/v1/currentConditions:lookup?key=${encodeURIComponent(mapsApiKey)}&location.latitude=${encodeURIComponent(String(lat))}&location.longitude=${encodeURIComponent(String(lng))}&unitsSystem=METRIC`;
+        const weatherRes = await fetch(weatherUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" }
+        });
+
+        if (weatherRes.status === 429) {
+          return res.status(429).json({
+            ...buildRegionalFallbackWeather(),
+            quotaExceeded: true,
+            error: "RESOURCE_EXHAUSTED"
+          });
+        }
+
+        if (!weatherRes.ok) {
+          return res.json(buildRegionalFallbackWeather());
+        }
+
+        const data: any = await weatherRes.json();
+        const tempC = typeof data?.temperature?.degrees === "number" ? Math.round(data.temperature.degrees) : 22;
+        const feelsLikeC = typeof data?.feelsLikeTemperature?.degrees === "number" ? Math.round(data.feelsLikeTemperature.degrees) : tempC;
+        const condition = data?.weatherCondition?.description?.text || "Clear & Pleasant";
+        const humidity = typeof data?.relativeHumidity === "number" ? data.relativeHumidity : 55;
+        const windKmh = typeof data?.wind?.speed?.value === "number" ? Math.round(data.wind.speed.value) : 12;
+        const precipProb = typeof data?.precipitation?.probability?.percent === "number" ? data.precipitation.probability.percent : 5;
+        const uvIndex = typeof data?.uvIndex === "number" ? data.uvIndex : 3;
+        const isDaytime = typeof data?.isDaytime === "boolean" ? data.isDaytime : true;
+
+        const dateSuitabilityNote =
+          precipProb >= 40
+            ? `Rain chance (${precipProb}%) — Cozy indoor fireplace or cellar table recommended.`
+            : windKmh >= 28
+            ? `Brisk breeze (${windKmh} km/h) — Sheltered courtyard seating ideal; sunset at ${sunsetTime}.`
+            : `Great conditions for rooftop or garden dining — Golden hour starts at ${goldenHourTime}.`;
+
+        return res.json({
+          temperatureC: tempC,
+          feelsLikeC,
+          condition,
+          humidity,
+          windKmh,
+          precipProb,
+          uvIndex,
+          isDaytime,
+          sunsetTime,
+          goldenHourTime,
+          dateSuitabilityNote,
+          source: "google-weather-api"
+        });
+      } catch (err: any) {
+        console.warn("[Server] /api/maps/weather fallback:", err.message || err);
+        return res.json(buildRegionalFallbackWeather());
       }
     }
   );

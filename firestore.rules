@@ -178,6 +178,45 @@ service cloud.firestore {
              isValidTimestamp(data.createdAt);
     }
 
+    function isValidMessage(data, messageId) {
+      return data.keys().hasAll(['id', 'senderUid', 'senderName', 'participants', 'text', 'messageType', 'createdAt']) &&
+             data.id == messageId &&
+             data.senderUid == (resource != null ? resource.data.senderUid : request.auth.uid) &&
+             data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 100 &&
+             (!('senderPhoto' in data) || (data.senderPhoto is string && data.senderPhoto.size() <= 500)) &&
+             data.participants is list && data.participants.size() >= 1 && data.participants.size() <= 4 &&
+             data.participants[0] is string && data.participants[0].size() <= 128 &&
+             data.participants.hasAny([data.senderUid]) &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 1000 &&
+             data.messageType in ['text', 'date_invite', 'goal_nudge', 'love_note', 'spot_share', 'date_poll', 'deposit_celebration'] &&
+             (!('linkedGoalId' in data) || (data.linkedGoalId is string && data.linkedGoalId.size() <= 128)) &&
+             (!('linkedGoalName' in data) || (data.linkedGoalName is string && data.linkedGoalName.size() <= 150)) &&
+             (!('linkedEventId' in data) || (data.linkedEventId is string && data.linkedEventId.size() <= 128)) &&
+             (!('linkedEventTitle' in data) || (data.linkedEventTitle is string && data.linkedEventTitle.size() <= 200)) &&
+             (!('linkedSpot' in data) || (data.linkedSpot is map && data.linkedSpot.size() <= 15)) &&
+             (!('pollData' in data) || (data.pollData is map && data.pollData.size() <= 10)) &&
+             (!('pollVotes' in data) || (data.pollVotes is map && data.pollVotes.size() <= 10)) &&
+             (!('spotVotes' in data) || (data.spotVotes is map && data.spotVotes.size() <= 10)) &&
+             (!('rsvpStatus' in data) || (data.rsvpStatus is map && data.rsvpStatus.size() <= 10)) &&
+             (!('depositData' in data) || (data.depositData is map && data.depositData.size() <= 10)) &&
+             (!('replyTo' in data) || (data.replyTo is map && data.replyTo.size() <= 6)) &&
+             (!('isPinned' in data) || (data.isPinned is bool)) &&
+             (!('reactions' in data) || (data.reactions is map && data.reactions.size() <= 10)) &&
+             (!('readBy' in data) || (data.readBy is list && data.readBy.size() <= 5)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidTypingStatus(data, userId) {
+      return data.keys().hasAll(['uid', 'userName', 'partnerUid', 'isTyping', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'userName', 'partnerUid', 'isTyping', 'updatedAt']) &&
+             data.uid == userId &&
+             data.uid == request.auth.uid &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() <= 100 &&
+             data.partnerUid is string && data.partnerUid.size() > 0 && data.partnerUid.size() <= 128 &&
+             data.isTyping is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
     // ===============================================================
     // Rules Matching Blocks
     // ===============================================================
@@ -302,9 +341,61 @@ service cloud.firestore {
       allow delete: if isValidId(eventId) && isAuthenticated() && (request.auth.uid == resource.data.ownerUid || isAdmin());
     }
 
+    // Partner Messages Collection
+    match /messages/{messageId} {
+      allow read: if isValidId(messageId) && isAuthenticated() && (
+        request.auth.uid == resource.data.senderUid ||
+        (resource.data.keys().hasAny(['participants']) && resource.data.participants.hasAny([request.auth.uid])) ||
+        isAdmin()
+      );
+
+      allow create: if isValidId(messageId) &&
+                    isAuthenticated() &&
+                    isValidMessage(request.resource.data, messageId) &&
+                    request.resource.data.senderUid == request.auth.uid;
+
+      // Participants can only update emoji reactions, read receipts, pins, or collaborative card votes/RSVPs; message text, senderUid, and participants are immutable
+      allow update: if isValidId(messageId) &&
+                    isAuthenticated() &&
+                    resource.data.keys().hasAny(['participants']) &&
+                    resource.data.participants.hasAny([request.auth.uid]) &&
+                    isValidMessage(request.resource.data, messageId) &&
+                    (
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy']) ||
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy', 'isPinned', 'spotVotes', 'pollVotes', 'rsvpStatus'])
+                    ) &&
+                    request.resource.data.participants == resource.data.participants &&
+                    fieldUnchanged('id') &&
+                    fieldUnchanged('senderUid') &&
+                    fieldUnchanged('text') &&
+                    fieldUnchanged('messageType') &&
+                    fieldUnchanged('createdAt');
+
+      allow delete: if isValidId(messageId) && isAuthenticated() && (
+        request.auth.uid == resource.data.senderUid || isAdmin()
+      );
+    }
+
+    // Partner Real-Time Typing Status Collection
+    match /typingStatus/{userId} {
+      allow read: if isValidId(userId) && isAuthenticated() && (
+        isOwner(userId) ||
+        (resource != null && resource.data.partnerUid == request.auth.uid) ||
+        isAdmin()
+      );
+
+      allow create, update: if isValidId(userId) &&
+                            isOwner(userId) &&
+                            isValidTypingStatus(request.resource.data, userId);
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
     // Default Deny Catch-All
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+
+

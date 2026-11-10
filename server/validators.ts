@@ -158,3 +158,84 @@ export function validateStreamRequest(req: Request, res: Response, next: NextFun
   req.body.prompt = trimmed;
   next();
 }
+
+export function validateMapConciergeRequest(req: Request, res: Response, next: NextFunction) {
+  const body = req.body || {};
+  const { prompt, provinceName, location, budgetRand } = body;
+
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({
+      error: "Missing required string parameter 'prompt'.",
+      code: "MISSING_PROMPT"
+    });
+  }
+
+  const trimmed = prompt.trim();
+  if (trimmed.length === 0) {
+    return res.status(400).json({
+      error: "Prompt cannot be empty.",
+      code: "EMPTY_PROMPT"
+    });
+  }
+
+  if (trimmed.length > 500) {
+    return res.status(400).json({
+      error: "Prompt exceeds maximum allowed length of 500 characters.",
+      code: "PROMPT_TOO_LONG"
+    });
+  }
+
+  if (provinceName && (typeof provinceName !== "string" || provinceName.length > 60)) {
+    return res.status(400).json({
+      error: "provinceName must be a string under 60 characters.",
+      code: "INVALID_SCHEMA"
+    });
+  }
+
+  if (location) {
+    if (typeof location !== "object" || typeof location.lat !== "number" || typeof location.lng !== "number") {
+      return res.status(400).json({
+        error: "Location must be an object with numeric lat and lng coordinates.",
+        code: "INVALID_SCHEMA"
+      });
+    }
+    if (location.lat < -90 || location.lat > 90 || location.lng < -180 || location.lng > 180) {
+      return res.status(400).json({
+        error: "Coordinates out of geographic range.",
+        code: "INVALID_SCHEMA"
+      });
+    }
+  }
+
+  if (budgetRand !== undefined && (typeof budgetRand !== "number" || budgetRand < 0 || budgetRand > 1000000)) {
+    return res.status(400).json({
+      error: "budgetRand must be a number between 0 and 1,000,000.",
+      code: "INVALID_SCHEMA"
+    });
+  }
+
+  req.body.prompt = trimmed;
+  next();
+}
+
+export function validateMapWeatherRequest(req: Request, res: Response, next: NextFunction) {
+  const body = req.body || {};
+  const { lat, lng } = body;
+
+  if (typeof lat !== "number" || typeof lng !== "number" || Number.isNaN(lat) || Number.isNaN(lng)) {
+    return res.status(400).json({
+      error: "Valid numeric 'lat' and 'lng' coordinates are required.",
+      code: "INVALID_COORDINATES"
+    });
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res.status(400).json({
+      error: "Coordinates out of geographic range.",
+      code: "INVALID_COORDINATES"
+    });
+  }
+
+  next();
+}
+

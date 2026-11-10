@@ -18,14 +18,36 @@ export interface SoloDateIdea {
   description: string;
 }
 
+export interface DiscoverReviewSnippet {
+  authorName: string;
+  rating: number;
+  text: string;
+  relativeTime?: string;
+}
+
 export interface DiscoverItem {
+  id?: string;
+  placeId?: string;
   title: string;
   summary: string;
   category: string;
   estimatedBudget: number;
   imageSearchTerm?: string;
   sourceName?: string;
+  address?: string;
+  location?: { lat: number; lng: number };
+  rating?: number;
+  userRatingCount?: number;
+  priceLevel?: string;
+  photoUrl?: string;
+  photos?: string[];
+  reviews?: DiscoverReviewSnippet[];
+  googleMapsURI?: string;
+  websiteURI?: string;
+  subRegionId?: string;
+  mood?: string;
   isAiGenerated?: boolean;
+  isGoogleMapsPlace?: boolean;
 }
 
 export interface RomanticTip {
@@ -308,3 +330,224 @@ export async function streamText(
 
   onComplete?.();
 }
+
+export interface AiMapItineraryStop {
+  title: string;
+  searchQuery: string;
+  category: 'Romantic' | 'Adventurous' | 'Cozy';
+  estimatedCostRand: number;
+  stayDurationMinutes: number;
+  tip: string;
+}
+
+export interface AiMapItinerary {
+  itineraryTitle: string;
+  mood: string;
+  summary: string;
+  estimatedTotalRand: number;
+  stops: AiMapItineraryStop[];
+}
+
+export interface SpotWeatherConditions {
+  temperatureC: number;
+  feelsLikeC: number;
+  condition: string;
+  humidity: number;
+  windKmh: number;
+  precipProb: number;
+  uvIndex: number;
+  isDaytime: boolean;
+  sunsetTime: string;
+  goldenHourTime: string;
+  dateSuitabilityNote: string;
+  source?: string;
+}
+
+/**
+ * Generates a natural-language multi-stop date map itinerary via Gemini on the server.
+ * Falls back to a regional South African itinerary when in Demo Mode or offline.
+ */
+export async function generateMapDateItinerary(params: {
+  prompt: string;
+  provinceName?: string;
+  location?: { lat: number; lng: number } | null;
+  budgetRand?: number;
+}): Promise<AiMapItinerary> {
+  const regionLabel = params.provinceName && params.provinceName !== 'All Provinces'
+    ? params.provinceName
+    : 'Cape Town & Winelands';
+  const lower = (params.prompt || '').toLowerCase();
+  const isAdventurous = lower.includes('hike') || lower.includes('adventure') || lower.includes('kayak') || lower.includes('outdoor') || lower.includes('safari');
+  const isCozy = lower.includes('cozy') || lower.includes('rain') || lower.includes('coffee') || lower.includes('cafe') || lower.includes('fireplace');
+
+  const fallback: AiMapItinerary = isAdventurous
+    ? {
+        itineraryTitle: `Golden Hour Adventure & Scenic Tasting in ${regionLabel}`,
+        mood: 'Adventurous',
+        summary: 'An exhilarating outdoor route pairing panoramic coastal or mountain trails with artisanal wood-fired dining at sunset.',
+        estimatedTotalRand: 980,
+        stops: [
+          {
+            title: 'Scenic Trail & Lookout Point',
+            searchQuery: `Scenic nature reserve viewpoint ${regionLabel} South Africa`,
+            category: 'Adventurous',
+            estimatedCostRand: 180,
+            stayDurationMinutes: 75,
+            tip: 'Arrive 90 minutes before sunset for the best golden-hour light and cooler breeze.'
+          },
+          {
+            title: 'Craft Taproom & Artisanal Platter',
+            searchQuery: `Artisanal brewery or gin tasting ${regionLabel} South Africa`,
+            category: 'Adventurous',
+            estimatedCostRand: 350,
+            stayDurationMinutes: 60,
+            tip: 'Order a shared tasting flight and sit on the outdoor deck.'
+          },
+          {
+            title: 'Twilight Rooftop or Wood-Fired Bistro',
+            searchQuery: `Scenic rooftop restaurant ${regionLabel} South Africa`,
+            category: 'Romantic',
+            estimatedCostRand: 450,
+            stayDurationMinutes: 90,
+            tip: 'Ask for a table facing the western horizon as city lights come alive.'
+          }
+        ]
+      }
+    : isCozy
+    ? {
+        itineraryTitle: `Velvet Mornings & Fireside Romance in ${regionLabel}`,
+        mood: 'Cozy',
+        summary: 'A slow, intimate itinerary through specialty coffee roasteries, boutique art spaces, and candlelit fireside dining.',
+        estimatedTotalRand: 890,
+        stops: [
+          {
+            title: 'Specialty Roastery & Pastry Pairing',
+            searchQuery: `Artisanal coffee roastery bakery ${regionLabel} South Africa`,
+            category: 'Cozy',
+            estimatedCostRand: 190,
+            stayDurationMinutes: 50,
+            tip: 'Share a warm almond croissant and single-origin pour-over in a quiet corner.'
+          },
+          {
+            title: 'Boutique Gallery & Sculpture Garden',
+            searchQuery: `Boutique art gallery garden ${regionLabel} South Africa`,
+            category: 'Cozy',
+            estimatedCostRand: 120,
+            stayDurationMinutes: 65,
+            tip: 'Stroll slowly and each pick one artwork that reminds you of a shared memory.'
+          },
+          {
+            title: 'Candlelit Cellar & Fireplace Bistro',
+            searchQuery: `Cozy romantic bistro wine bar ${regionLabel} South Africa`,
+            category: 'Romantic',
+            estimatedCostRand: 580,
+            stayDurationMinutes: 105,
+            tip: 'Reserve a booth near the fireplace or courtyard fairy lights.'
+          }
+        ]
+      }
+    : {
+        itineraryTitle: `Twilight Wine & Candlelit Romance in ${regionLabel}`,
+        mood: 'Romantic',
+        summary: 'A curated multi-stop romantic journey blending sunset views, estate wine tasting, and intimate fine dining.',
+        estimatedTotalRand: 1350,
+        stops: [
+          {
+            title: 'Estate Wine & MCC Tasting Terrace',
+            searchQuery: `Romantic wine estate tasting ${regionLabel} South Africa`,
+            category: 'Romantic',
+            estimatedCostRand: 320,
+            stayDurationMinutes: 70,
+            tip: 'Start with a chilled Cap Classique on the terrace overlooking the valley.'
+          },
+          {
+            title: 'Golden Hour Botanical or Sunset Promenade',
+            searchQuery: `Sunset viewpoint botanical garden ${regionLabel} South Africa`,
+            category: 'Adventurous',
+            estimatedCostRand: 150,
+            stayDurationMinutes: 50,
+            tip: 'Bring a light wrap and pause for a golden-hour couple photo.'
+          },
+          {
+            title: 'Intimate Courtyard Fine Dining',
+            searchQuery: `Romantic fine dining restaurant ${regionLabel} South Africa`,
+            category: 'Romantic',
+            estimatedCostRand: 880,
+            stayDurationMinutes: 110,
+            tip: 'Mention your date night when booking to request a secluded candlelit table.'
+          }
+        ]
+      };
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/ai/map-concierge', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      return fallback;
+    }
+    const data = await res.json();
+    if (data && data.itineraryTitle && Array.isArray(data.stops) && data.stops.length > 0) {
+      return data;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Queries the server-side Google Maps Weather & Golden-Hour Sunset proxy endpoint.
+ * Includes Tier 2 Google Maps Platform quota check.
+ */
+const weatherCache: Record<string, SpotWeatherConditions> = {};
+
+export async function fetchSpotWeather(lat: number, lng: number): Promise<SpotWeatherConditions> {
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (weatherCache[key]) {
+    return weatherCache[key];
+  }
+
+  const fallback: SpotWeatherConditions = {
+    temperatureC: 22,
+    feelsLikeC: 22,
+    condition: 'Clear & Pleasant',
+    humidity: 54,
+    windKmh: 12,
+    precipProb: 5,
+    uvIndex: 4,
+    isDaytime: true,
+    sunsetTime: '18:15',
+    goldenHourTime: '17:30',
+    dateSuitabilityNote: 'Great conditions for outdoor terrace or rooftop dining — Golden hour starts at 17:30.'
+  };
+
+  try {
+    const res = await fetch('/api/maps/weather', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng })
+    });
+
+    if (res.status === 429) {
+      window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
+    }
+
+    const data = await res.json();
+    if (data?.quotaExceeded) {
+      window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
+    }
+
+    if (data && typeof data.temperatureC === 'number') {
+      weatherCache[key] = data;
+      return data;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+

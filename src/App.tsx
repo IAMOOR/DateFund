@@ -79,11 +79,26 @@ import RelationshipSettingsView from './components/views/RelationshipSettingsVie
 import HistoryView from './components/views/HistoryView';
 import DiscoverView from './components/views/DiscoverView';
 import DreamsView from './components/views/DreamsView';
+import PartnerChatView from './components/views/PartnerChatView';
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
 import { GoalPaceChart } from './components/goals/GoalPaceChart';
 import { formatRand, formatDateShort, calculateGoalPace } from './utils/formatters';
-import { Goal, Transaction, Event, DateMemory, BucketListItem, RelationshipData, DateMood } from './types';
+import {
+  Goal,
+  Transaction,
+  Event,
+  DateMemory,
+  BucketListItem,
+  RelationshipData,
+  DateMood,
+  PartnerMessage,
+  PartnerMessageType,
+  SharedSpotPayload,
+  DatePollPayload,
+  DepositCelebrationPayload,
+  MessageReplyReference
+} from './types';
 import { DATE_MOODS, getMoodConfig } from './utils/moods';
 import { MoodBadge } from './components/ui/MoodBadge';
 import { SA_PROVINCES, getNearestProvince } from './utils/provinces';
@@ -93,7 +108,7 @@ import { setupStatusBar } from './utils/statusBar';
 import { App as CapacitorApp } from '@capacitor/app';
 import { getCachedAI, setCachedAI, clearUserAICache } from './utils/aiCache';
 import { suggestDateIdea, getSoloEncouragement, getSoloDateIdea } from './utils/aiClient';
-import { mapGoalDoc, mapTransactionDoc, mapEventDoc, mapBucketItemDoc } from './utils/firestoreUtils';
+import { mapGoalDoc, mapTransactionDoc, mapEventDoc, mapBucketItemDoc, mapMessageDoc } from './utils/firestoreUtils';
 import confetti from 'canvas-confetti';
 import { 
   auth, 
@@ -126,7 +141,7 @@ const AVATAR_ME = "https://lh3.googleusercontent.com/aida-public/AB6AXuCI9vqhcwk
 const AVATAR_THEM = "https://lh3.googleusercontent.com/aida-public/AB6AXuAtSrWZ1IwuPWyeSCMCaLnRPy3BkUAKSiMvfJhcK9E5rJP3vovDVSODIg8sP4Q3rADR1gaNrhe9UaQ_fq10mqBujTlzOtTWG87Fjp-671jT35crUY5spPerfxObhMTtP5snzeDplyp5ipu1WEMDbPKY5LvyNyGpi50vqZozS-yyRrPWAEFBzxsvzB8RmfWhB32HTc59fVsigig_oA3WGXBjy8kbIbHtoszMYp8v5EGHeRMtOcujZIs-eXfLHtd_0oFxNPPFmGhziq8";
 const AVATAR_NAV = "https://lh3.googleusercontent.com/aida-public/AB6AXuA20UXs9pIK-DCOsonkEu1jFsmy1lA1Ber-Qz_WRjRxv1kDJtFW3kCgu2-LPm16-MT53WL_17D3m4fm0TiD60AvSvEy9llEaq89YxnqlcGysbofDKyx_S814mqMekZlxDC2r5enku9HhhAckS1Scibd1xRf-BcE2NiTJzVd-awYAxPjaM7JWoLSOIL8WkNEGvgBVF1m4-fr4wco6N8AVlK_FhBOfikhacdvnJY4GAgnCmP1Qkqsj55mCtOFoy8MT2CfI9E3SvGDgpM";
 
-type View = 'home' | 'history' | 'discover' | 'map' | 'planner' | 'wishlist' | 'scrapbook' | 'milestones' | 'relationship' | 'dreams';
+type View = 'home' | 'history' | 'discover' | 'map' | 'planner' | 'chat' | 'wishlist' | 'scrapbook' | 'milestones' | 'relationship' | 'dreams';
 
 interface GoalPaceAnalysis {
   isCompleted: boolean;
@@ -229,6 +244,9 @@ export default function App() {
   const [romanticTipsMood, setRomanticTipsMood] = useState<DateMood>('Romantic');
   const [mysteryEventToReveal, setMysteryEventToReveal] = useState<Event | null>(null);
   const [bucketList, setBucketList] = useState<BucketListItem[]>([]);
+  const [messages, setMessages] = useState<PartnerMessage[]>([]);
+  const [isQuickChatOpen, setIsQuickChatOpen] = useState(false);
+  const [focusedMapSpot, setFocusedMapSpot] = useState<SharedSpotPayload | null>(null);
   const [relationshipStartDate, setRelationshipStartDate] = useState('2024-02-14');
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
@@ -840,10 +858,19 @@ export default function App() {
       ]);
     });
 
+    const messagesQuery = query(collection(db, 'messages'), where('participants', 'array-contains', user.uid));
+    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+      const msgList = snapshot.docs.map(docSnap => mapMessageDoc(docSnap));
+      setMessages(msgList.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    }, (err) => {
+      console.warn("Messages snapshot notice:", err.message);
+    });
+
     return () => {
       unsubscribeGoals();
       unsubscribeTransactions();
       unsubscribeEvents();
+      unsubscribeMessages();
     };
   }, [user, isDemoMode]);
 
@@ -1061,7 +1088,87 @@ export default function App() {
         collaborators: ['demo_guest_user'],
         rsvps: { 'demo_guest_user': 'Going' },
         createdAt: new Date().toISOString(),
-        mood: 'romantic'
+        mood: 'Romantic'
+      }
+    ]);
+    const nowMs = Date.now();
+    setMessages([
+      {
+        id: 'demo_msg_1',
+        senderUid: 'demo_partner_alex',
+        senderName: 'Alex',
+        senderPhoto: AVATAR_THEM,
+        participants: ['demo_guest_user', 'demo_partner_alex'],
+        text: 'Thinking about our next date night together ❤️ Let’s do something special in Ekurhuleni this Friday!',
+        messageType: 'love_note',
+        isPinned: true,
+        reactions: { demo_guest_user: '❤️' },
+        readBy: ['demo_partner_alex', 'demo_guest_user'],
+        createdAt: new Date(nowMs - 3600000 * 3).toISOString()
+      },
+      {
+        id: 'demo_msg_2',
+        senderUid: 'demo_partner_alex',
+        senderName: 'Alex',
+        senderPhoto: AVATAR_THEM,
+        participants: ['demo_guest_user', 'demo_partner_alex'],
+        text: 'Found this gorgeous lakeside spot in Benoni on Discover! What do you think?',
+        messageType: 'spot_share',
+        linkedSpot: {
+          id: 'ek-benoni-1',
+          name: 'Homestead Dam & Farrarmere Garden Café',
+          category: 'Cozy · Benoni',
+          location: 'Farrarmere, Benoni, Ekurhuleni',
+          province: 'Ekurhuleni',
+          estimatedBudget: 380,
+          rating: 4.8,
+          summary: 'Lakeside picnic walk along Homestead Dam followed by artisan coffee and warm pastries under the trees.',
+          mood: 'Cozy',
+          lat: -26.1752,
+          lng: 28.3084
+        },
+        spotVotes: { demo_partner_alex: 'up' },
+        readBy: ['demo_partner_alex', 'demo_guest_user'],
+        createdAt: new Date(nowMs - 3600000 * 2).toISOString()
+      },
+      {
+        id: 'demo_msg_3',
+        senderUid: 'demo_partner_alex',
+        senderName: 'Alex',
+        senderPhoto: AVATAR_THEM,
+        participants: ['demo_guest_user', 'demo_partner_alex'],
+        text: '📊 Date Poll: Which Ekurhuleni date vibe are you feeling this weekend?',
+        messageType: 'date_poll',
+        pollData: {
+          question: 'Which Ekurhuleni date vibe are you feeling this weekend?',
+          options: [
+            { id: 'opt_1', label: 'Cozy Garden Café in Benoni ☕' },
+            { id: 'opt_2', label: 'Bokkie Park & Sunset Dinner in Boksburg 🌅' },
+            { id: 'opt_3', label: 'Marievale Bird Sanctuary Picnic in Springs 🦩' }
+          ]
+        },
+        pollVotes: { demo_partner_alex: 'opt_1' },
+        readBy: ['demo_partner_alex'],
+        createdAt: new Date(nowMs - 1800000).toISOString()
+      },
+      {
+        id: 'demo_msg_4',
+        senderUid: 'demo_partner_alex',
+        senderName: 'Alex',
+        senderPhoto: AVATAR_THEM,
+        participants: ['demo_guest_user', 'demo_partner_alex'],
+        text: 'Just added R 1,000 toward our Weekend Getaway in Franschhoek! 🥂',
+        messageType: 'deposit_celebration',
+        depositData: {
+          goalId: 'demo_goal_1',
+          goalName: 'Weekend Getaway in Franschhoek',
+          amount: 1000,
+          newCurrentAmount: 2400,
+          targetAmount: 5000,
+          contributor: 'Them'
+        },
+        readBy: ['demo_partner_alex'],
+        createdAt: new Date(nowMs - 600000).toISOString()
       }
     ]);
     setIsAuthReady(true);
@@ -1266,6 +1373,15 @@ export default function App() {
       }
       setFundData({ goalId: '', amount: '', contributor: 'Me' });
       setIsFundModalOpen(false);
+      // Post celebratory deposit card into Partner Chat
+      void handlePostDepositCelebration({
+        goalId: goal.id,
+        goalName: goal.name,
+        amount,
+        newCurrentAmount: newAmount,
+        targetAmount: goal.targetAmount,
+        contributor: fundData.contributor
+      });
       return;
     }
 
@@ -1283,6 +1399,14 @@ export default function App() {
       }
       setFundData({ goalId: '', amount: '', contributor: 'Me' });
       setIsFundModalOpen(false);
+      void handlePostDepositCelebration({
+        goalId: goal.id,
+        goalName: goal.name,
+        amount,
+        newCurrentAmount: newAmount,
+        targetAmount: goal.targetAmount,
+        contributor: fundData.contributor
+      });
     } catch (err) {
       console.warn("Firestore funds notice, updating locally:", err);
       setTransactions(prev => [transaction, ...prev]);
@@ -1295,6 +1419,14 @@ export default function App() {
       }
       setFundData({ goalId: '', amount: '', contributor: 'Me' });
       setIsFundModalOpen(false);
+      void handlePostDepositCelebration({
+        goalId: goal.id,
+        goalName: goal.name,
+        amount,
+        newCurrentAmount: newAmount,
+        targetAmount: goal.targetAmount,
+        contributor: fundData.contributor
+      });
     }
   };
 
@@ -1765,6 +1897,14 @@ export default function App() {
         setToast(`Recorded R ${data.amount.toFixed(2)} contribution by ${data.contributor}! 🥂`);
       }
       setIsFundModalOpen(false);
+      void handlePostDepositCelebration({
+        goalId: targetGoal.id,
+        goalName: targetGoal.name,
+        amount: data.amount,
+        newCurrentAmount: newAmount,
+        targetAmount: targetGoal.targetAmount,
+        contributor: data.contributor
+      });
     } catch (err) {
       setTransactions(prev => [transaction, ...prev]);
       setGoals(prev => prev.map(g => g.id === targetGoal.id ? { ...g, currentAmount: newAmount } : g));
@@ -1775,6 +1915,282 @@ export default function App() {
         setToast(`Recorded R ${data.amount.toFixed(2)} contribution by ${data.contributor}! 🥂`);
       }
       setIsFundModalOpen(false);
+      void handlePostDepositCelebration({
+        goalId: targetGoal.id,
+        goalName: targetGoal.name,
+        amount: data.amount,
+        newCurrentAmount: newAmount,
+        targetAmount: targetGoal.targetAmount,
+        contributor: data.contributor
+      });
+    }
+  };
+
+  // ============================================================================
+  // PARTNER CHAT 2.0 HANDLERS & UNREAD / READ-RECEIPT SYNC
+  // ============================================================================
+  const resolvedPartnerUid = useMemo(() => {
+    if (userProfile?.partnerUid && userProfile.partnerUid !== user?.uid) return userProfile.partnerUid;
+    if (relationshipData?.partnerUid && relationshipData.partnerUid !== user?.uid) return relationshipData.partnerUid;
+    for (const g of goals) {
+      const other = g.collaborators?.find(uid => uid !== user?.uid);
+      if (other) return other;
+    }
+    for (const e of events) {
+      const other = e.collaborators?.find(uid => uid !== user?.uid);
+      if (other) return other;
+    }
+    if (isDemoMode) return 'demo_partner_alex';
+    return undefined;
+  }, [userProfile, relationshipData, goals, events, user, isDemoMode]);
+
+  const unreadChatCount = useMemo(() => {
+    if (!user) return 0;
+    return messages.filter(
+      m => m.senderUid !== user.uid && !(m.readBy || []).includes(user.uid)
+    ).length;
+  }, [messages, user]);
+
+  // Automatically mark unread incoming partner messages as read when Chat view or Quick Chat is open
+  useEffect(() => {
+    if (!user || (view !== 'chat' && !isQuickChatOpen)) return;
+    const unreadIncoming = messages.filter(
+      m => m.senderUid !== user.uid && !(m.readBy || []).includes(user.uid)
+    );
+    if (unreadIncoming.length === 0) return;
+
+    setMessages(prev =>
+      prev.map(m =>
+        m.senderUid !== user.uid && !(m.readBy || []).includes(user.uid)
+          ? { ...m, readBy: Array.from(new Set([...(m.readBy || []), user.uid])) }
+          : m
+      )
+    );
+
+    if (!isDemoMode) {
+      unreadIncoming.forEach(async msg => {
+        try {
+          const updatedReadBy = Array.from(new Set([...(msg.readBy || []), user.uid])).slice(0, 5);
+          await setDoc(
+            doc(db, 'messages', msg.id),
+            { readBy: updatedReadBy },
+            { merge: true }
+          );
+        } catch {
+          // Ignore transient permission/offline notices
+        }
+      });
+    }
+  }, [view, isQuickChatOpen, messages, user, isDemoMode]);
+
+  const handleSendMessage = async (payload: {
+    text: string;
+    messageType: PartnerMessageType;
+    linkedGoalId?: string;
+    linkedGoalName?: string;
+    linkedEventId?: string;
+    linkedEventTitle?: string;
+    linkedSpot?: SharedSpotPayload;
+    pollData?: DatePollPayload;
+    depositData?: DepositCelebrationPayload;
+    replyTo?: MessageReplyReference;
+  }) => {
+    if (!user) return;
+    const messageId = 'msg_' + Math.random().toString(36).substring(2, 11);
+    const participants = Array.from(
+      new Set([user.uid, ...(resolvedPartnerUid ? [resolvedPartnerUid] : [])])
+    ).slice(0, 4);
+
+    const newMsg: PartnerMessage = {
+      id: messageId,
+      senderUid: user.uid,
+      senderName: (profileData.displayName || user.displayName || 'You').slice(0, 100),
+      senderPhoto: profileData.photoURL || user.photoURL || AVATAR_ME,
+      participants,
+      text: payload.text.slice(0, 1000),
+      messageType: payload.messageType,
+      ...(payload.linkedGoalId ? { linkedGoalId: payload.linkedGoalId } : {}),
+      ...(payload.linkedGoalName ? { linkedGoalName: payload.linkedGoalName.slice(0, 150) } : {}),
+      ...(payload.linkedEventId ? { linkedEventId: payload.linkedEventId } : {}),
+      ...(payload.linkedEventTitle ? { linkedEventTitle: payload.linkedEventTitle.slice(0, 200) } : {}),
+      ...(payload.linkedSpot ? { linkedSpot: payload.linkedSpot } : {}),
+      ...(payload.pollData ? { pollData: payload.pollData, pollVotes: { [user.uid]: payload.pollData.options[0]?.id || 'opt_1' } } : {}),
+      ...(payload.depositData ? { depositData: payload.depositData } : {}),
+      ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
+      reactions: {},
+      readBy: [user.uid],
+      createdAt: new Date().toISOString()
+    };
+
+    setMessages(prev => [...prev, newMsg]);
+
+    if (isDemoMode) return;
+
+    try {
+      await setDoc(doc(db, 'messages', messageId), newMsg);
+    } catch (err) {
+      console.warn('Message saved locally:', err);
+    }
+  };
+
+  const handlePostDepositCelebration = async (depositData: DepositCelebrationPayload) => {
+    if (!user) return;
+    const pct =
+      depositData.targetAmount > 0
+        ? Math.min(100, Math.round((depositData.newCurrentAmount / depositData.targetAmount) * 100))
+        : 0;
+    await handleSendMessage({
+      text: `🥂 Added ${formatRand(depositData.amount)} to "${depositData.goalName}"! We are now at ${pct}% (${formatRand(depositData.newCurrentAmount)} of ${formatRand(depositData.targetAmount)}).`,
+      messageType: 'deposit_celebration',
+      linkedGoalId: depositData.goalId,
+      linkedGoalName: depositData.goalName,
+      depositData
+    });
+  };
+
+  const handleShareSpotToChat = async (spot: SharedSpotPayload) => {
+    if (!user) return;
+    await handleSendMessage({
+      text: `What do you think about "${spot.name}" (${spot.location}) for our next date? ✨`,
+      messageType: 'spot_share',
+      linkedSpot: spot
+    });
+    setToast(`Shared "${spot.name}" to Partner Chat! 💬`);
+    setIsQuickChatOpen(true);
+  };
+
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (!user) return;
+    const target = messages.find(m => m.id === messageId);
+    if (!target) return;
+    const nextReactions = { ...(target.reactions || {}) };
+    if (nextReactions[user.uid] === emoji) {
+      delete nextReactions[user.uid];
+    } else {
+      nextReactions[user.uid] = emoji;
+    }
+
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, reactions: nextReactions } : m))
+    );
+
+    if (isDemoMode) return;
+    try {
+      await setDoc(doc(db, 'messages', messageId), { reactions: nextReactions }, { merge: true });
+    } catch (err) {
+      console.warn('Reaction update local fallback:', err);
+    }
+  };
+
+  const handleTogglePinMessage = async (messageId: string) => {
+    if (!user) return;
+    const target = messages.find(m => m.id === messageId);
+    if (!target) return;
+    const nextPinned = !target.isPinned;
+
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, isPinned: nextPinned } : m))
+    );
+    setToast(nextPinned ? 'Pinned to Couple Reminders 📌' : 'Reminder unpinned');
+
+    if (isDemoMode) return;
+    try {
+      await setDoc(doc(db, 'messages', messageId), { isPinned: nextPinned }, { merge: true });
+    } catch (err) {
+      console.warn('Pin update local fallback:', err);
+    }
+  };
+
+  const handleVoteSpot = async (messageId: string, vote: 'up' | 'down') => {
+    if (!user) return;
+    const target = messages.find(m => m.id === messageId);
+    if (!target) return;
+    const currentVotes = { ...(target.spotVotes || {}) };
+    if (currentVotes[user.uid] === vote) {
+      delete currentVotes[user.uid];
+    } else {
+      currentVotes[user.uid] = vote;
+    }
+
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, spotVotes: currentVotes } : m))
+    );
+
+    if (isDemoMode) return;
+    try {
+      await setDoc(doc(db, 'messages', messageId), { spotVotes: currentVotes }, { merge: true });
+    } catch (err) {
+      console.warn('Spot vote local fallback:', err);
+    }
+  };
+
+  const handleVotePoll = async (messageId: string, optionId: string) => {
+    if (!user) return;
+    const target = messages.find(m => m.id === messageId);
+    if (!target) return;
+    const nextPollVotes = { ...(target.pollVotes || {}), [user.uid]: optionId };
+
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, pollVotes: nextPollVotes } : m))
+    );
+
+    if (isDemoMode) return;
+    try {
+      await setDoc(doc(db, 'messages', messageId), { pollVotes: nextPollVotes }, { merge: true });
+    } catch (err) {
+      console.warn('Poll vote local fallback:', err);
+    }
+  };
+
+  const handleRespondDateInvite = async (
+    messageId: string,
+    status: 'going' | 'reschedule',
+    linkedEventId?: string
+  ) => {
+    if (!user) return;
+    const target = messages.find(m => m.id === messageId);
+    if (!target) return;
+    const nextRsvp = { ...(target.rsvpStatus || {}), [user.uid]: status };
+
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, rsvpStatus: nextRsvp } : m))
+    );
+    setToast(status === 'going' ? "RSVP confirmed: I'm In! 🥂" : 'Requested a new time 🕰️');
+
+    if (linkedEventId) {
+      const targetEv = events.find(ev => ev.id === linkedEventId);
+      if (targetEv) {
+        const mappedStatus = status === 'going' ? 'Going' : 'Maybe';
+        const updatedRsvps = { ...(targetEv.rsvps || {}), [user.uid]: mappedStatus as 'Going' | 'Maybe' };
+        setEvents(prev =>
+          prev.map(ev => (ev.id === linkedEventId ? { ...ev, rsvps: updatedRsvps } : ev))
+        );
+        if (!isDemoMode) {
+          try {
+            await setDoc(doc(db, 'events', linkedEventId), { rsvps: updatedRsvps }, { merge: true });
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    }
+
+    if (isDemoMode) return;
+    try {
+      await setDoc(doc(db, 'messages', messageId), { rsvpStatus: nextRsvp }, { merge: true });
+    } catch (err) {
+      console.warn('RSVP update local fallback:', err);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!user) return;
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    if (isDemoMode) return;
+    try {
+      await deleteDoc(doc(db, 'messages', messageId));
+    } catch (err) {
+      console.warn('Message delete local fallback:', err);
     }
   };
 
@@ -2166,19 +2582,20 @@ export default function App() {
           {/* Desktop Navigation Bar (Central Tabs) */}
           <div className="hidden lg:flex items-center gap-1 bg-surface-container-low/90 p-1.5 rounded-full border border-outline-variant/10 shadow-sm backdrop-blur-md">
             {[
-              { id: 'home', label: 'Home', icon: Home },
-              { id: 'planner', label: 'Planner', icon: Calendar },
-              { id: 'discover', label: 'Discover', icon: Compass },
-              { id: 'map', label: 'Map', icon: MapIcon },
-              { id: 'history', label: 'History', icon: History },
+              { id: 'home', label: 'Home', icon: Home, badge: 0 },
+              { id: 'planner', label: 'Planner', icon: Calendar, badge: 0 },
+              { id: 'discover', label: 'Discover', icon: Compass, badge: 0 },
+              { id: 'map', label: 'Map', icon: MapIcon, badge: 0 },
+              { id: 'chat', label: 'Chat', icon: MessageCircleHeart, badge: unreadChatCount },
+              { id: 'history', label: 'History', icon: History, badge: 0 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = view === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => { hapticLight(); setView(tab.id as any); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                  onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView(tab.id as any); }}
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
                     isActive
                       ? 'bg-primary text-on-primary-fixed shadow-md shadow-primary/20 scale-100'
                       : 'text-outline hover:text-on-surface hover:bg-surface-container-highest/50'
@@ -2186,6 +2603,11 @@ export default function App() {
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>
+                  {tab.badge > 0 && (
+                    <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center tabular-nums shadow-xs">
+                      {tab.badge > 99 ? '99+' : tab.badge}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -3271,13 +3693,26 @@ export default function App() {
                 handleAddBucketItem({
                   title: item.title,
                   category: item.category,
-                  estimatedBudget: 500,
+                  estimatedBudget: item.estimatedBudget || 500,
                   notes: item.notes,
                   season: 'Any',
                   addedBy: 'Me'
                 });
                 setToast(`Saved "${item.title}" to Date Wishlist! 🔖`);
               }}
+              onFundDateGoal={(goalInfo) => {
+                const futureDate = new Date();
+                futureDate.setMonth(futureDate.getMonth() + 2);
+                setEditingGoal(null);
+                setNewGoal({
+                  name: goalInfo.name,
+                  target: goalInfo.targetAmount.toString(),
+                  deadline: goalInfo.deadline || futureDate.toISOString().split('T')[0]
+                });
+                setIsGoalModalOpen(true);
+              }}
+              onShareSpotToChat={handleShareSpotToChat}
+              onOpenMap={() => setView('map')}
             />
           )}
 
@@ -3294,6 +3729,8 @@ export default function App() {
               <GoogleDateMap
                 events={events}
                 userLocation={location}
+                focusedSpot={focusedMapSpot}
+                onShareSpotToChat={handleShareSpotToChat}
                 onPlanDate={(info) => {
                   setEditingEvent(null);
                   setNewEvent({
@@ -3323,6 +3760,72 @@ export default function App() {
                     addedBy: 'Me'
                   });
                   setToast(`Saved "${item.title}" to Date Wishlist! 🔖`);
+                }}
+              />
+            </motion.div>
+          )}
+
+          {view === 'chat' && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-serif">Partner Messenger</h2>
+                  <p className="text-outline text-xs sm:text-sm">
+                    Share Discover date spots, vote on weekend polls, send love notes, and celebrate savings milestones together.
+                  </p>
+                </div>
+              </div>
+              <PartnerChatView
+                currentUserUid={user.uid}
+                currentUserName={profileData.displayName || user.displayName || 'You'}
+                currentUserPhoto={profileData.photoURL || user.photoURL || AVATAR_ME}
+                partnerUid={resolvedPartnerUid}
+                partnerName={relationshipData?.partnerName || (isDemoMode ? 'Alex' : 'Your Partner')}
+                partnerPhoto={relationshipData?.partnerPhoto || AVATAR_THEM}
+                messages={messages}
+                goals={goals}
+                events={events}
+                onSendMessage={handleSendMessage}
+                onToggleReaction={handleToggleReaction}
+                onTogglePinMessage={handleTogglePinMessage}
+                onVoteSpot={handleVoteSpot}
+                onVotePoll={handleVotePoll}
+                onRespondDateInvite={handleRespondDateInvite}
+                onDeleteMessage={handleDeleteMessage}
+                onOpenInviteModal={() => setIsInviteModalOpen(true)}
+                onSelectGoalForFunding={(goalId) => {
+                  setFundData({ goalId, amount: '', contributor: 'Me' });
+                  setIsFundModalOpen(true);
+                }}
+                onNavigateToPlanner={() => setView('planner')}
+                onPlanDateFromSpot={(spot) => {
+                  setEditingEvent(null);
+                  setNewEvent({
+                    title: spot.name,
+                    description: spot.summary || `Shared date idea at ${spot.name}`,
+                    date: new Date().toISOString().split('T')[0],
+                    time: '19:00',
+                    location: spot.location,
+                    goalId: '',
+                    reminder: true,
+                    reminderMinutes: 60,
+                    tags: [spot.category || 'Date Spot', 'Shared in Chat'],
+                    mood: spot.mood || 'Romantic',
+                    isMystery: false,
+                    mysteryClue: ''
+                  });
+                  setIsEventModalOpen(true);
+                  setView('planner');
+                }}
+                onViewSpotOnMap={(spot) => {
+                  setFocusedMapSpot(spot);
+                  setView('map');
                 }}
               />
             </motion.div>
@@ -5147,17 +5650,114 @@ export default function App() {
         initialMood={romanticTipsMood}
       />
 
+      {/* Floating Partner Quick-Chat Drawer & Slightly Translucent Bubble (Optimized for all devices) */}
+      {view !== 'chat' && (
+        <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-6 right-3 sm:right-6 z-40 flex flex-col items-end">
+          <AnimatePresence>
+            {isQuickChatOpen ? (
+              <motion.div
+                key="quick-chat-drawer"
+                initial={{ opacity: 0, y: 16, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                className="w-[calc(100vw-1.5rem)] sm:w-[400px] lg:w-[430px] max-w-full mb-2 shadow-2xl"
+              >
+                <PartnerChatView
+                  compactMode
+                  currentUserUid={user.uid}
+                  currentUserName={profileData.displayName || user.displayName || 'You'}
+                  currentUserPhoto={profileData.photoURL || user.photoURL || AVATAR_ME}
+                  partnerUid={resolvedPartnerUid}
+                  partnerName={relationshipData?.partnerName || (isDemoMode ? 'Alex' : 'Your Partner')}
+                  partnerPhoto={relationshipData?.partnerPhoto || AVATAR_THEM}
+                  messages={messages}
+                  goals={goals}
+                  events={events}
+                  onSendMessage={handleSendMessage}
+                  onToggleReaction={handleToggleReaction}
+                  onTogglePinMessage={handleTogglePinMessage}
+                  onVoteSpot={handleVoteSpot}
+                  onVotePoll={handleVotePoll}
+                  onRespondDateInvite={handleRespondDateInvite}
+                  onDeleteMessage={handleDeleteMessage}
+                  onOpenInviteModal={() => setIsInviteModalOpen(true)}
+                  onSelectGoalForFunding={(goalId) => {
+                    setFundData({ goalId, amount: '', contributor: 'Me' });
+                    setIsFundModalOpen(true);
+                  }}
+                  onNavigateToPlanner={() => {
+                    setIsQuickChatOpen(false);
+                    setView('planner');
+                  }}
+                  onPlanDateFromSpot={(spot) => {
+                    setIsQuickChatOpen(false);
+                    setEditingEvent(null);
+                    setNewEvent({
+                      title: spot.name,
+                      description: spot.summary || `Shared date idea at ${spot.name}`,
+                      date: new Date().toISOString().split('T')[0],
+                      time: '19:00',
+                      location: spot.location,
+                      goalId: '',
+                      reminder: true,
+                      reminderMinutes: 60,
+                      tags: [spot.category || 'Date Spot', 'Shared in Chat'],
+                      mood: spot.mood || 'Romantic',
+                      isMystery: false,
+                      mysteryClue: ''
+                    });
+                    setIsEventModalOpen(true);
+                    setView('planner');
+                  }}
+                  onViewSpotOnMap={(spot) => {
+                    setIsQuickChatOpen(false);
+                    setFocusedMapSpot(spot);
+                    setView('map');
+                  }}
+                  onClose={() => setIsQuickChatOpen(false)}
+                />
+              </motion.div>
+            ) : (
+              <motion.button
+                key="quick-chat-fab"
+                type="button"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  hapticLight();
+                  setIsQuickChatOpen(true);
+                }}
+                className="relative flex items-center gap-2 px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-full bg-primary/85 hover:bg-primary/95 text-on-primary-fixed backdrop-blur-md border border-white/20 shadow-lg transition-all cursor-pointer min-h-[44px]"
+                title="Open Partner Chat"
+                aria-label="Open Partner Chat"
+              >
+                <MessageCircleHeart className="w-5 h-5 shrink-0" />
+                <span className="text-xs font-bold hidden sm:inline">Partner Chat</span>
+                {unreadChatCount > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center tabular-nums shadow-xs">
+                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                  </span>
+                )}
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
       {/* Bottom Navigation (Mobile & Tablet) */}
       <nav 
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/75 backdrop-blur-2xl border-t border-outline-variant/20 dark:border-white/10 pb-[max(env(safe-area-inset-bottom,0px),0.65rem)] pt-1.5 px-2 shadow-[0_-8px_32px_rgba(0,0,0,0.2)]"
         aria-label="Bottom navigation"
       >
         <div className="max-w-md mx-auto grid grid-cols-5 items-center gap-0.5">
-          <NavItem icon={<Home className="w-5 h-5" fill={view === 'home' ? "currentColor" : "none"} />} label="Home" active={view === 'home'} onClick={() => { hapticLight(); setView('home'); }} />
-          <NavItem icon={<Compass className="w-5 h-5" />} label="Discover" active={view === 'discover'} onClick={() => { hapticLight(); setView('discover'); }} />
-          <NavItem icon={<MapIcon className="w-5 h-5" />} label="Map" active={view === 'map'} onClick={() => { hapticLight(); setView('map'); }} />
-          <NavItem icon={<Calendar className="w-5 h-5" />} label="Planner" active={view === 'planner'} onClick={() => { hapticLight(); setView('planner'); }} />
-          <NavItem icon={<History className="w-5 h-5" />} label="History" active={view === 'history'} onClick={() => { hapticLight(); setView('history'); }} />
+          <NavItem icon={<Home className="w-5 h-5" fill={view === 'home' ? "currentColor" : "none"} />} label="Home" active={view === 'home'} onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView('home'); }} />
+          <NavItem icon={<Compass className="w-5 h-5" />} label="Discover" active={view === 'discover'} onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView('discover'); }} />
+          <NavItem icon={<MapIcon className="w-5 h-5" />} label="Map" active={view === 'map'} onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView('map'); }} />
+          <NavItem icon={<Calendar className="w-5 h-5" />} label="Planner" active={view === 'planner'} onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView('planner'); }} />
+          <NavItem icon={<MessageCircleHeart className="w-5 h-5" />} label="Chat" badgeCount={unreadChatCount} active={view === 'chat'} onClick={() => { hapticLight(); setIsQuickChatOpen(false); setView('chat'); }} />
         </div>
       </nav>
     </div>
@@ -5234,18 +5834,23 @@ function HistoryItem({ icon, avatar, title, subtitle, amount, amountColor = "tex
   );
 }
 
-function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick?: () => void }) {
+function NavItem({ icon, label, active = false, badgeCount = 0, onClick }: { icon: React.ReactNode, label: string, active?: boolean, badgeCount?: number, onClick?: () => void }) {
   return (
     <button 
       onClick={onClick}
-      className={`flex-1 flex flex-col items-center justify-center min-h-[48px] py-1 px-1 rounded-xl transition-all select-none cursor-pointer group outline-none ${
+      className={`relative flex-1 flex flex-col items-center justify-center min-h-[48px] py-1 px-1 rounded-xl transition-all select-none cursor-pointer group outline-none ${
         active ? 'text-primary' : 'text-outline hover:text-on-surface'
       }`}
-      aria-label={label}
+      aria-label={badgeCount > 0 ? `${label} (${badgeCount} unread)` : label}
       aria-current={active ? 'page' : undefined}
     >
-      <div className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${active ? 'bg-primary/20 shadow-xs scale-105' : 'group-hover:bg-surface-container-highest/60'}`}>
+      <div className={`relative p-1.5 rounded-xl transition-all flex items-center justify-center ${active ? 'bg-primary/20 shadow-xs scale-105' : 'group-hover:bg-surface-container-highest/60'}`}>
         {icon}
+        {badgeCount > 0 && (
+          <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center tabular-nums shadow-xs">
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </span>
+        )}
       </div>
       <span className={`text-[11px] font-medium tracking-tight mt-0.5 truncate max-w-full leading-tight ${
         active ? 'font-bold text-primary' : 'text-outline'

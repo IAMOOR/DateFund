@@ -24,10 +24,18 @@ export const SA_PROVINCES: SAProvince[] = [
   {
     id: 'gp',
     name: 'Gauteng',
-    shortName: 'Joburg & Pretoria',
-    tagline: 'Skyline rooftops, open-fire dining & jacaranda gardens',
+    shortName: 'Joburg, Pretoria & Ekurhuleni',
+    tagline: 'Skyline rooftops, Ekurhuleni lakeside hideaways & cozy garden cafés',
     center: { lat: -26.2041, lng: 28.0473 }, // Johannesburg
-    sampleTowns: ['Johannesburg', 'Pretoria', 'Rosebank', 'Cradle of Humankind', 'Sandton', 'Muldersdrift']
+    sampleTowns: ['Benoni', 'Boksburg', 'Brakpan', 'Springs', 'Bedfordview', 'Johannesburg', 'Pretoria', 'Rosebank']
+  },
+  {
+    id: 'ekurhuleni',
+    name: 'Ekurhuleni (East Rand)',
+    shortName: 'Benoni · Boksburg · Brakpan · Springs',
+    tagline: 'Lakeside picnics, cozy garden cafés, bird sanctuaries & vibrant date nights',
+    center: { lat: -26.2050, lng: 28.3350 }, // Central Ekurhuleni (between Benoni/Boksburg/Brakpan/Springs)
+    sampleTowns: ['Benoni', 'Boksburg', 'Brakpan', 'Springs', 'Bedfordview', 'Edenvale', 'Kempton Park']
   },
   {
     id: 'kzn',
@@ -87,9 +95,88 @@ export const SA_PROVINCES: SAProvince[] = [
   }
 ];
 
+export interface EkurhuleniSubRegion {
+  id: string;
+  name: string;
+  tagline: string;
+  center: { lat: number; lng: number };
+  radiusMeters: number;
+  defaultPlacesQueries: string[];
+}
+
+export const EKURHULENI_SUBREGIONS: EkurhuleniSubRegion[] = [
+  {
+    id: 'all-ekurhuleni',
+    name: 'All Ekurhuleni',
+    tagline: 'Benoni, Boksburg, Brakpan, Springs & Bedfordview',
+    center: { lat: -26.2050, lng: 28.3350 },
+    radiusMeters: 22000,
+    defaultPlacesQueries: [
+      'romantic restaurant cozy cafe Benoni Boksburg Ekurhuleni',
+      'date night restaurant garden cafe Brakpan Springs Ekurhuleni'
+    ]
+  },
+  {
+    id: 'benoni',
+    name: 'Benoni',
+    tagline: 'Farrarmere cafés, Rynfield country markets, Korsman Bird Sanctuary & Homestead Dam',
+    center: { lat: -26.1885, lng: 28.3208 },
+    radiusMeters: 10000,
+    defaultPlacesQueries: [
+      'romantic restaurant cozy cafe Rynfield Farrarmere Benoni',
+      'best date restaurants coffee shops parks Benoni'
+    ]
+  },
+  {
+    id: 'boksburg',
+    name: 'Boksburg',
+    tagline: 'Bokkie Park tea garden, Bartlett steakhouses, Woodlands spa & Sunward Park bistros',
+    center: { lat: -26.2125, lng: 28.2526 },
+    radiusMeters: 10000,
+    defaultPlacesQueries: [
+      'romantic restaurant cozy cafe Bartlett Sunward Park Boksburg',
+      'couples spa park tea garden restaurant Boksburg'
+    ]
+  },
+  {
+    id: 'brakpan',
+    name: 'Brakpan',
+    tagline: 'Carnival City date nights, bowling, Dalpark bird sanctuary & cozy grill lounges',
+    center: { lat: -26.2366, lng: 28.3694 },
+    radiusMeters: 10000,
+    defaultPlacesQueries: [
+      'Carnival City restaurants date activities Brakpan',
+      'cozy cafe restaurant bistro Dalpark Brakpan'
+    ]
+  },
+  {
+    id: 'springs',
+    name: 'Springs',
+    tagline: 'Marievale Bird Sanctuary wetlands, Petersfield garden cafés & country club sunsets',
+    center: { lat: -26.2547, lng: 28.4428 },
+    radiusMeters: 12000,
+    defaultPlacesQueries: [
+      'cozy cafe restaurant Petersfield Selection Park Springs',
+      'Marievale Bird Sanctuary nature date restaurant Springs'
+    ]
+  },
+  {
+    id: 'bedfordview-edenvale',
+    name: 'Bedfordview & Edenvale',
+    tagline: "Gillooly's Farm lakeside walks, Village View fine dining & Glendower terraces",
+    center: { lat: -26.1764, lng: 28.1464 },
+    radiusMeters: 9000,
+    defaultPlacesQueries: [
+      'romantic restaurant cozy cafe Village View Bedfordview Edenvale',
+      'Gilloolys Farm lakeside restaurant picnic Bedfordview'
+    ]
+  }
+];
+
 export interface CuratedDateSpot {
   id: string;
   provinceId: string;
+  subRegionId?: string;
   name: string;
   address: string;
   location: { lat: number; lng: number };
@@ -104,6 +191,301 @@ export interface CuratedDateSpot {
 }
 
 export const ALL_PROVINCES_DATE_SPOTS: CuratedDateSpot[] = [
+  // EKURHULENI — BENONI
+  {
+    id: 'ek-benoni-1',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'Korsman Bird Sanctuary & Farrarmere Coffee Walk',
+    address: 'The Drive, Westdene, Benoni, Ekurhuleni',
+    location: { lat: -26.1839, lng: 28.3036 },
+    rating: 4.7,
+    userRatingCount: 1120,
+    priceLevel: 'R',
+    category: 'Cozy & Nature',
+    mood: 'Cozy',
+    summary: 'Stroll hand-in-hand around Benoni’s tranquil flamingo and waterfowl pan at golden hour, followed by artisanal pastries and cappuccinos in leafy Farrarmere.',
+    estimatedBudgetZar: 260,
+  },
+  {
+    id: 'ek-benoni-2',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'Homestead Dam Sunset Picnic & Kayaking',
+    address: 'Main Rd, Farrarmere, Benoni, Ekurhuleni',
+    location: { lat: -26.1682, lng: 28.3069 },
+    rating: 4.6,
+    userRatingCount: 1640,
+    priceLevel: 'R',
+    category: 'Lakeside Picnic',
+    mood: 'Relaxed',
+    summary: 'Spread a woven blanket on the grassy banks of Homestead Dam in Benoni with a gourmet picnic basket, sunset reflections, and calm afternoon paddling.',
+    estimatedBudgetZar: 340,
+  },
+  {
+    id: 'ek-benoni-3',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'Ebotse Links Waterfront Dining & Sundowners',
+    address: 'Sarel Cilliers St, Rynfield, Benoni, Ekurhuleni',
+    location: { lat: -26.1538, lng: 28.3489 },
+    rating: 4.7,
+    userRatingCount: 980,
+    priceLevel: 'RRR',
+    category: 'Romantic Dining',
+    mood: 'Romantic',
+    summary: 'Intimate waterfront terrace overlooking Rynfield Dam in Benoni, serving wood-fired dishes, craft cocktails, and sweeping East Rand sunset views.',
+    estimatedBudgetZar: 820,
+  },
+  {
+    id: 'ek-benoni-4',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'The Sheds @ Country Lane Market & Live Acoustic Date',
+    address: '139 Pretoria Rd, Rynfield, Benoni, Ekurhuleni',
+    location: { lat: -26.1419, lng: 28.3612 },
+    rating: 4.7,
+    userRatingCount: 1450,
+    priceLevel: 'RR',
+    category: 'Cozy Market & Craft',
+    mood: 'Cozy',
+    summary: 'Rustic country courtyard in Rynfield with fairy lights, artisanal wood-fired pizzas, craft gin bars, and acoustic live music under old eucalyptus trees.',
+    estimatedBudgetZar: 480,
+  },
+  {
+    id: 'ek-benoni-5',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'Benoni Bunny Park & Shaded Oak Picnic',
+    address: 'Pretoria Rd, Rynfield, Benoni, Ekurhuleni',
+    location: { lat: -26.1604, lng: 28.3371 },
+    rating: 4.5,
+    userRatingCount: 2300,
+    priceLevel: 'R',
+    category: 'Playful & Cozy',
+    mood: 'Playful',
+    summary: 'Wholesome, nostalgic daytime date feeding friendly rabbits and farm animals beneath towering oak trees, paired with warm pancakes and coffee.',
+    estimatedBudgetZar: 220,
+  },
+  {
+    id: 'ek-benoni-6',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'benoni',
+    name: 'Farrarmere Boutique Café & Pottery Painting Date',
+    address: 'Sheridan Rd, Farrarmere, Benoni, Ekurhuleni',
+    location: { lat: -26.1645, lng: 28.3125 },
+    rating: 4.8,
+    userRatingCount: 740,
+    priceLevel: 'RR',
+    category: 'Cozy Café & Creative',
+    mood: 'Cozy',
+    summary: 'Cozy suburban garden café in Benoni where couples paint custom ceramics together over red cappuccinos, baked cheesecake, and artisanal brunch.',
+    estimatedBudgetZar: 460,
+  },
+
+  // EKURHULENI — BOKSBURG
+  {
+    id: 'ek-boksburg-1',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'boksburg',
+    name: 'Bokkie Park Tea Garden & Couples Picnic',
+    address: 'Southvale Rd, Parkdene, Boksburg, Ekurhuleni',
+    location: { lat: -26.2289, lng: 28.2533 },
+    rating: 4.6,
+    userRatingCount: 2890,
+    priceLevel: 'R',
+    category: 'Cozy Tea Garden',
+    mood: 'Cozy',
+    summary: 'Beloved Boksburg green sanctuary featuring a charming outdoor tea garden, homemade scones with clotted cream, and peaceful shaded lawns.',
+    estimatedBudgetZar: 280,
+  },
+  {
+    id: 'ek-boksburg-2',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'boksburg',
+    name: 'Birchwood Sanctuary Gardens & Steakhouse Dinner',
+    address: '14 View Point Rd, Bartlett, Boksburg, Ekurhuleni',
+    location: { lat: -26.1695, lng: 28.2484 },
+    rating: 4.6,
+    userRatingCount: 3400,
+    priceLevel: 'RRR',
+    category: 'Romantic Dining & Spa',
+    mood: 'Romantic',
+    summary: 'Lush water-feature gardens in Bartlett, Boksburg offering couples hydro-spa treatments followed by candlelit steak and wine pairings.',
+    estimatedBudgetZar: 950,
+  },
+  {
+    id: 'ek-boksburg-3',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'boksburg',
+    name: 'Sunward Park Mediterranean Courtyard Bistro',
+    address: 'Kingfisher Ave, Sunward Park, Boksburg, Ekurhuleni',
+    location: { lat: -26.2562, lng: 28.2798 },
+    rating: 4.7,
+    userRatingCount: 1180,
+    priceLevel: 'RR',
+    category: 'Cozy Fireplace Bistro',
+    mood: 'Cozy',
+    summary: 'Warm neighborhood bistro in Sunward Park with crackling winter fireplaces, wood-fired tapas, seafood platters, and intimate booth seating.',
+    estimatedBudgetZar: 620,
+  },
+  {
+    id: 'ek-boksburg-4',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'boksburg',
+    name: 'ERPM 1903 Heritage Clubhouse Sundowners',
+    address: 'Jhomo Kenyatta Dr, Boksburg West, Boksburg',
+    location: { lat: -26.2078, lng: 28.2291 },
+    rating: 4.6,
+    userRatingCount: 820,
+    priceLevel: 'RR',
+    category: 'Scenic & Sunset',
+    mood: 'Relaxed',
+    summary: 'Historic tree-lined fairways in Boksburg with a wrap-around veranda perfect for quiet golden-hour drinks and shared gourmet platters.',
+    estimatedBudgetZar: 450,
+  },
+
+  // EKURHULENI — BRAKPAN
+  {
+    id: 'ek-brakpan-1',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'brakpan',
+    name: 'Carnival City Ten-Pin Bowling, Arcade & Dinner Night',
+    address: 'Century Rd, Elsburg Rd, Brakpan, Ekurhuleni',
+    location: { lat: -26.2591, lng: 28.3188 },
+    rating: 4.6,
+    userRatingCount: 5400,
+    priceLevel: 'RR',
+    category: 'Fun & Playful Date',
+    mood: 'Playful',
+    summary: 'High-energy East Rand date night in Brakpan with competitive ten-pin bowling, laser tag, carnival sweets, and dinner at signature restaurants.',
+    estimatedBudgetZar: 680,
+  },
+  {
+    id: 'ek-brakpan-2',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'brakpan',
+    name: 'Dalpark Bird Sanctuary & Lakeside Sunset Walk',
+    address: 'Dalpark Ext 1, Brakpan, Ekurhuleni',
+    location: { lat: -26.2542, lng: 28.3315 },
+    rating: 4.5,
+    userRatingCount: 610,
+    priceLevel: 'R',
+    category: 'Scenic Nature Walk',
+    mood: 'Relaxed',
+    summary: 'Peaceful natural wetland and dam reserve in Dalpark, Brakpan where couples enjoy quiet late-afternoon walks and lakeside birdwatching.',
+    estimatedBudgetZar: 200,
+  },
+  {
+    id: 'ek-brakpan-3',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'brakpan',
+    name: 'Brakpan Cozy Steak & Craft Lounge Date',
+    address: 'Voortrekker Rd / Mall@Carnival, Brakpan, Ekurhuleni',
+    location: { lat: -26.2465, lng: 28.3482 },
+    rating: 4.5,
+    userRatingCount: 940,
+    priceLevel: 'RR',
+    category: 'Cozy Grill & Cocktails',
+    mood: 'Cozy',
+    summary: 'Relaxed fireside grill and cocktail lounge in Brakpan serving flame-grilled ribs, gourmet milkshakes, and warm chocolate lava cake for two.',
+    estimatedBudgetZar: 540,
+  },
+
+  // EKURHULENI — SPRINGS
+  {
+    id: 'ek-springs-1',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'springs',
+    name: 'Marievale Bird Sanctuary Wetland Hide & Flask Picnic',
+    address: 'R42 Delmas-Nigel Rd, Marievale, Springs, Ekurhuleni',
+    location: { lat: -26.3614, lng: 28.5139 },
+    rating: 4.8,
+    userRatingCount: 1520,
+    priceLevel: 'R',
+    category: 'Cozy Nature Sanctuary',
+    mood: 'Cozy',
+    summary: 'Bring a thermos of hot chocolate and fresh croissants to secluded wooden hides overlooking pristine Blesbokspruit wetlands just outside Springs.',
+    estimatedBudgetZar: 240,
+  },
+  {
+    id: 'ek-springs-2',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'springs',
+    name: 'Petersfield Secret Garden Café & Artisanal Bakery',
+    address: '1st Ave, Petersfield, Springs, Ekurhuleni',
+    location: { lat: -26.2318, lng: 28.4512 },
+    rating: 4.7,
+    userRatingCount: 870,
+    priceLevel: 'RR',
+    category: 'Cozy Garden Café',
+    mood: 'Cozy',
+    summary: 'Leafy courtyard café in Petersfield, Springs famous for velvet lattes, warm Belgian waffles, and intimate morning brunch dates under pergola vines.',
+    estimatedBudgetZar: 380,
+  },
+  {
+    id: 'ek-springs-3',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'springs',
+    name: 'Springs Country Club Fairway Sunset & Grill',
+    address: '44A 8th St, Selection Park, Springs, Ekurhuleni',
+    location: { lat: -26.2658, lng: 28.4195 },
+    rating: 4.6,
+    userRatingCount: 790,
+    priceLevel: 'RR',
+    category: 'Romantic Sunset Dining',
+    mood: 'Romantic',
+    summary: 'Unwind on the Selection Park terrace in Springs watching golden hour settle over manicured greens with chilled wine and classic steakhouse dining.',
+    estimatedBudgetZar: 580,
+  },
+  {
+    id: 'ek-springs-4',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'springs',
+    name: 'Pollak Park Country Estate Sunday Lunch & Stroll',
+    address: '80C South Main Reef Rd, Pollak Park, Springs',
+    location: { lat: -26.2784, lng: 28.4261 },
+    rating: 4.5,
+    userRatingCount: 640,
+    priceLevel: 'RR',
+    category: 'Relaxed Country Date',
+    mood: 'Relaxed',
+    summary: 'Tranquil mature trees and heritage clubhouse hospitality in Pollak Park, Springs for a slow-paced couple lunch and afternoon walk.',
+    estimatedBudgetZar: 490,
+  },
+
+  // EKURHULENI — BEDFORDVIEW & EDENVALE
+  {
+    id: 'ek-bedford-1',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'bedfordview-edenvale',
+    name: "Gillooly's Farm Lakeside Walk & Waterfront Bistro",
+    address: '47 Boeing Rd West, Bedfordview, Ekurhuleni',
+    location: { lat: -26.1684, lng: 28.1337 },
+    rating: 4.6,
+    userRatingCount: 3850,
+    priceLevel: 'RR',
+    category: 'Lakeside Picnic & Café',
+    mood: 'Cozy',
+    summary: 'Weeping willows and shimmering water views at Gillooly’s Farm in Bedfordview—ideal for a lakeside stroll followed by wood-fired lunch on the deck.',
+    estimatedBudgetZar: 520,
+  },
+  {
+    id: 'ek-bedford-2',
+    provinceId: 'ekurhuleni',
+    subRegionId: 'bedfordview-edenvale',
+    name: 'Village View Candlelit Seafood & Jazz Night',
+    address: 'Van Buuren Rd, Bedfordview, Ekurhuleni',
+    location: { lat: -26.1852, lng: 28.1496 },
+    rating: 4.8,
+    userRatingCount: 2650,
+    priceLevel: 'RRRR',
+    category: 'Fine Dining',
+    mood: 'Luxurious',
+    summary: 'Sophisticated white-tablecloth dining in Bedfordview with fresh Langoustines, fine Cape vintages, and intimate candlelit romance.',
+    estimatedBudgetZar: 1350,
+  },
+
   // WESTERN CAPE
   {
     id: 'wc-1',

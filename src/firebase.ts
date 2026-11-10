@@ -53,6 +53,7 @@ try {
 }
 export const db = firestoreDb;
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Error Handling
 export enum OperationType {

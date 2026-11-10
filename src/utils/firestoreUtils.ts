@@ -1,4 +1,4 @@
-import type { Goal, Transaction, Event, BucketListItem } from '../types';
+import type { Goal, Transaction, Event, BucketListItem, PartnerMessage, PartnerMessageType } from '../types';
 
 /**
  * Maps a Firestore document snapshot to a domain Goal entity.
@@ -92,3 +92,49 @@ export function mapBucketItemDoc(docSnap: { id: string; data: () => Record<strin
     createdAt: data.createdAt || new Date().toISOString(),
   };
 }
+
+/**
+ * Maps a Firestore document snapshot to a domain PartnerMessage entity.
+ * Canonical snapshot ID strictly overrides stored data.id.
+ */
+export function mapMessageDoc(docSnap: { id: string; data: () => Record<string, any> }): PartnerMessage {
+  const data = docSnap.data() || {};
+  const allowedTypes: PartnerMessageType[] = [
+    'text',
+    'date_invite',
+    'goal_nudge',
+    'love_note',
+    'spot_share',
+    'date_poll',
+    'deposit_celebration'
+  ];
+  const messageType: PartnerMessageType = allowedTypes.includes(data.messageType) ? data.messageType : 'text';
+
+  return {
+    ...data,
+    id: docSnap.id, // Canonical: snapshot ID strictly overrides any data.id
+    senderUid: data.senderUid || '',
+    senderName: data.senderName || 'Partner',
+    senderPhoto: data.senderPhoto,
+    participants: Array.isArray(data.participants) ? data.participants : [],
+    text: data.text || '',
+    messageType,
+    linkedGoalId: data.linkedGoalId,
+    linkedGoalName: data.linkedGoalName,
+    linkedEventId: data.linkedEventId,
+    linkedEventTitle: data.linkedEventTitle,
+    linkedSpot: data.linkedSpot,
+    pollData: data.pollData,
+    pollVotes: typeof data.pollVotes === 'object' && data.pollVotes !== null ? data.pollVotes : {},
+    spotVotes: typeof data.spotVotes === 'object' && data.spotVotes !== null ? data.spotVotes : {},
+    rsvpStatus: typeof data.rsvpStatus === 'object' && data.rsvpStatus !== null ? data.rsvpStatus : {},
+    depositData: data.depositData,
+    replyTo: data.replyTo,
+    isPinned: Boolean(data.isPinned),
+    reactions: typeof data.reactions === 'object' && data.reactions !== null ? data.reactions : {},
+    readBy: Array.isArray(data.readBy) ? data.readBy : [],
+    createdAt: data.createdAt || new Date().toISOString(),
+  };
+}
+
+

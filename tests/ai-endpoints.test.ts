@@ -150,4 +150,57 @@ describe('AI Endpoints Security & Rate Limiting', () => {
       expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
     });
   });
+
+  describe('Google Maps AI Concierge & Weather Endpoints', () => {
+    beforeEach(() => {
+      setCustomTokenVerifierForTesting(async () => ({
+        uid: 'user_authenticated_maps',
+        email: 'maps@example.com',
+        firebase: { sign_in_provider: 'password' }
+      } as any));
+    });
+
+    it('protects /api/ai/map-concierge from unauthenticated requests with 401', async () => {
+      const res = await request(app)
+        .post('/api/ai/map-concierge')
+        .send({ prompt: 'Sunset wine & dinner in Stellenbosch' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('returns a structured multi-stop map itinerary for authenticated /api/ai/map-concierge requests', async () => {
+      const res = await request(app)
+        .post('/api/ai/map-concierge')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          prompt: 'Cozy rainy day cafes and fireplace bistro in Cape Town',
+          provinceName: 'Western Cape'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.itineraryTitle).toBeTruthy();
+      expect(Array.isArray(res.body.stops)).toBe(true);
+      expect(res.body.stops.length).toBeGreaterThan(0);
+      expect(typeof res.body.estimatedTotalRand).toBe('number');
+    });
+
+    it('validates coordinates on /api/maps/weather and returns weather + SAST sunset times', async () => {
+      const badRes = await request(app)
+        .post('/api/maps/weather')
+        .send({ lat: 195, lng: 18.42 });
+      expect(badRes.status).toBe(400);
+      expect(badRes.body.code).toBe('INVALID_COORDINATES');
+
+      const okRes = await request(app)
+        .post('/api/maps/weather')
+        .send({ lat: -33.9249, lng: 18.4241 });
+      expect(okRes.status).toBe(200);
+      expect(typeof okRes.body.temperatureC).toBe('number');
+      expect(typeof okRes.body.sunsetTime).toBe('string');
+      expect(typeof okRes.body.goldenHourTime).toBe('string');
+      expect(typeof okRes.body.dateSuitabilityNote).toBe('string');
+    });
+  });
 });
+

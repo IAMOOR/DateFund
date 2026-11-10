@@ -3,7 +3,8 @@ import {
   mapGoalDoc, 
   mapTransactionDoc, 
   mapEventDoc, 
-  mapBucketItemDoc 
+  mapBucketItemDoc,
+  mapMessageDoc
 } from '../src/utils/firestoreUtils';
 import fs from 'fs';
 import path from 'path';
@@ -85,6 +86,37 @@ describe('Firestore Security & Document Integrity', () => {
       expect(result.id).toBe('canonical_bucket_item_789');
       expect(result.id).not.toBe('victim_item_target');
     });
+
+    it('prevents stored id fields from hijacking canonical partner message ID and maps Partner Chat 2.0 fields', () => {
+      const mockSnap: any = {
+        id: 'canonical_message_real_101',
+        data: () => ({
+          id: 'forged_message_id_999',
+          senderUid: 'user_a',
+          senderName: 'Alex',
+          participants: ['user_a', 'user_b'],
+          text: 'Found this spot in Benoni!',
+          messageType: 'spot_share',
+          linkedSpot: {
+            name: 'Homestead Dam',
+            category: 'Cozy',
+            location: 'Benoni, Ekurhuleni',
+            estimatedBudget: 350
+          },
+          spotVotes: { user_a: 'up' },
+          isPinned: true,
+          createdAt: '2026-03-10T18:00:00.000Z'
+        })
+      };
+
+      const result = mapMessageDoc(mockSnap);
+      expect(result.id).toBe('canonical_message_real_101');
+      expect(result.id).not.toBe('forged_message_id_999');
+      expect(result.messageType).toBe('spot_share');
+      expect(result.linkedSpot?.name).toBe('Homestead Dam');
+      expect(result.spotVotes?.user_a).toBe('up');
+      expect(result.isPinned).toBe(true);
+    });
   });
 
   describe('Firestore Security Rules Static Analysis (Issue 2)', () => {
@@ -120,6 +152,19 @@ describe('Firestore Security & Document Integrity', () => {
       expect(rulesContent).toContain('data.id == goalId');
       expect(rulesContent).toContain('data.id == transactionId');
       expect(rulesContent).toContain('data.id == eventId');
+      expect(rulesContent).toContain('data.id == messageId');
+    });
+
+    it('enforces participant-only access and immutable message text on /messages/{messageId}', () => {
+      expect(rulesContent).toContain('match /messages/{messageId}');
+      expect(rulesContent).toContain("request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy'])");
+      expect(rulesContent).toContain("request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy', 'isPinned', 'spotVotes', 'pollVotes', 'rsvpStatus'])");
+    });
+
+    it('enforces owner-only writes and partner-scoped reads on /typingStatus/{userId}', () => {
+      expect(rulesContent).toContain('match /typingStatus/{userId}');
+      expect(rulesContent).toContain('isValidTypingStatus(request.resource.data, userId)');
+      expect(rulesContent).toContain('resource.data.partnerUid == request.auth.uid');
     });
 
     it('enforces ID format validation against path traversal', () => {
@@ -136,3 +181,4 @@ describe('Firestore Security & Document Integrity', () => {
     });
   });
 });
+
