@@ -12,7 +12,7 @@ service cloud.firestore {
     // Fields: id, ownerUid, collaborators, name, targetAmount, currentAmount, deadline, archived, archivedAt, createdAt
     //
     // Collection: transactions/{transactionId}
-    // Fields: id, ownerUid, goalId, goalName, amount, date, contributor, type, notes, createdAt
+    // Fields: id, ownerUid, goalId, goalName, amount, date, contributor, type, notes, collaborators, createdAt
     //
     // Collection: events/{eventId}
     // Fields: id, ownerUid, title, description, date, time, location, reminder, reminderMinutes, reminderSent, tags, mood, isMystery, mysteryRevealed, mysteryClue, collaborators, rsvps, memory, completed, createdAt
@@ -138,6 +138,7 @@ service cloud.firestore {
              data.contributor in ['Me', 'Them'] &&
              data.type in ['deposit', 'withdrawal'] &&
              (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             (!('collaborators' in data) || (data.collaborators is list && data.collaborators.size() <= 10)) &&
              isValidTimestamp(data.createdAt);
     }
 
@@ -286,7 +287,7 @@ service cloud.firestore {
 
     // Transactions Collection
     match /transactions/{transactionId} {
-      allow read: if isValidId(transactionId) && (isDocOwner() || isAdmin());
+      allow read: if isValidId(transactionId) && (isDocOwner() || isGoalCollaborator(resource.data.goalId) || isAdmin());
 
       // Only authenticated users who are verified collaborators/owners of the referenced goal can log transactions
       allow create: if isValidId(transactionId) &&

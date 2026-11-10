@@ -22,6 +22,7 @@ export interface Transaction {
   type: 'deposit' | 'withdrawal';
   createdAt: string;
   notes?: string;
+  collaborators?: string[];
 }
 
 export interface DateMemory {

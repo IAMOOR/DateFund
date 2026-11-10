@@ -38,6 +38,7 @@ export function mapTransactionDoc(docSnap: { id: string; data: () => Record<stri
     contributor: data.contributor === 'Them' ? 'Them' : 'Me',
     type: data.type === 'withdrawal' ? 'withdrawal' : 'deposit',
     notes: data.notes,
+    collaborators: Array.isArray(data.collaborators) ? data.collaborators : [],
     createdAt: data.createdAt || new Date().toISOString(),
   };
 }

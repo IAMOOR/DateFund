@@ -47,5 +47,20 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.datefund.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>datefund</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DateFund uses your location to discover romantic spots and activities near you.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DateFund uses your camera to capture memories for your date scrapbook.</string>
 </dict>
 </plist>

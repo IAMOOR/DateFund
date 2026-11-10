@@ -7,6 +7,8 @@
 import { auth } from '../firebase';
 import { getCachedAI, setCachedAI } from './aiCache';
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
 export interface SuggestedDateIdea {
   title: string;
   description: string;
@@ -91,7 +93,7 @@ export async function suggestDateIdea(
 
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/suggest-date', {
+    const res = await fetch(`${API_BASE}/api/ai/suggest-date`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ goals, events })
@@ -109,7 +111,7 @@ export async function getSoloEncouragement(): Promise<string> {
   const fallback = "Focus on your growth, cherish your peace, and know the best chapters are ahead.";
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/solo-advice', {
+    const res = await fetch(`${API_BASE}/api/ai/solo-advice`, {
       method: 'POST',
       headers
     });
@@ -130,7 +132,7 @@ export async function getSoloDateIdea(): Promise<SoloDateIdea> {
   };
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/solo-date-idea', {
+    const res = await fetch(`${API_BASE}/api/ai/solo-date-idea`, {
       method: 'POST',
       headers
     });
@@ -154,7 +156,7 @@ export async function fetchDiscoverSuggestions(
   ];
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/discover-suggestions', {
+    const res = await fetch(`${API_BASE}/api/ai/discover-suggestions`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ goals })
@@ -209,7 +211,7 @@ export async function discoverDateIdeas(params: {
 
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/discover-ideas', {
+    const res = await fetch(`${API_BASE}/api/ai/discover-ideas`, {
       method: 'POST',
       headers,
       body: JSON.stringify(params)
@@ -255,7 +257,7 @@ export async function fetchRomanticTips(
 
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/ai/romantic-tips', {
+    const res = await fetch(`${API_BASE}/api/ai/romantic-tips`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ mood })
@@ -287,7 +289,7 @@ export async function streamText(
   onComplete?: () => void
 ): Promise<void> {
   const headers = await getAuthHeaders();
-  const res = await fetch('/api/ai/stream', {
+  const res = await fetch(`${API_BASE}/api/ai/stream`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ prompt })

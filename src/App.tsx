@@ -132,6 +132,8 @@ import {
   addDoc, 
   deleteDoc,
   deleteField,
+  updateDoc,
+  increment,
   handleFirestoreError, 
   OperationType,
   User
@@ -804,10 +806,29 @@ export default function App() {
       ]);
     });
 
-    const transactionsQuery = query(collection(db, 'transactions'), where('ownerUid', '==', user.uid));
-    const unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactionsList = snapshot.docs.map(doc => mapTransactionDoc(doc));
-      setTransactions(transactionsList.sort((a, b) => b.date.localeCompare(a.date)));
+    const transactionsCollabQuery = query(collection(db, 'transactions'), where('collaborators', 'array-contains', user.uid));
+    const transactionsOwnerQuery = query(collection(db, 'transactions'), where('ownerUid', '==', user.uid));
+    const collabDocs = new Map<string, Transaction>();
+    const ownerDocs = new Map<string, Transaction>();
+
+    const updateCombinedTransactions = () => {
+      const combined = new Map([...ownerDocs, ...collabDocs]);
+      const list = Array.from(combined.values());
+      if (list.length > 0) {
+        setTransactions(list.sort((a, b) => b.date.localeCompare(a.date)));
+      }
+    };
+
+    const unsubscribeCollabTx = onSnapshot(transactionsCollabQuery, (snapshot) => {
+      collabDocs.clear();
+      snapshot.docs.forEach(d => collabDocs.set(d.id, mapTransactionDoc(d)));
+      updateCombinedTransactions();
+    }, () => {});
+
+    const unsubscribeOwnerTx = onSnapshot(transactionsOwnerQuery, (snapshot) => {
+      ownerDocs.clear();
+      snapshot.docs.forEach(d => ownerDocs.set(d.id, mapTransactionDoc(d)));
+      updateCombinedTransactions();
     }, (err) => {
       console.warn("Transactions snapshot notice:", err.message);
       setTransactions(prev => prev.length > 0 ? prev : [
@@ -868,7 +889,8 @@ export default function App() {
 
     return () => {
       unsubscribeGoals();
-      unsubscribeTransactions();
+      unsubscribeCollabTx();
+      unsubscribeOwnerTx();
       unsubscribeEvents();
       unsubscribeMessages();
     };
@@ -1359,6 +1381,7 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       contributor: fundData.contributor,
       type: 'deposit',
+      collaborators: goal.collaborators && goal.collaborators.length > 0 ? goal.collaborators : [user.uid],
       createdAt: new Date().toISOString()
     };
 
@@ -1387,9 +1410,8 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'transactions', transactionId), transaction);
-      await setDoc(doc(db, 'goals', goal.id), {
-        ...goal,
-        currentAmount: newAmount
+      await updateDoc(doc(db, 'goals', goal.id), {
+        currentAmount: increment(amount)
       });
       if (reached100) {
         triggerGoalCelebration(goal.name);
@@ -1571,12 +1593,23 @@ export default function App() {
     try {
       const sharedGoals = goals.filter(g => g.collaborators.length > 1);
       for (const goal of sharedGoals) {
-        const goalTransactions = transactions.filter(t => t.goalId === goal.id);
-        for (const t of goalTransactions) {
-          await deleteDoc(doc(db, 'transactions', t.id));
+        if (goal.ownerUid === user.uid) {
+          await updateDoc(doc(db, 'goals', goal.id), {
+            collaborators: [user.uid],
+            archived: true,
+            archivedAt: new Date().toISOString()
+          });
+        } else {
+          const updatedCollabs = goal.collaborators.filter(uid => uid !== user.uid);
+          await updateDoc(doc(db, 'goals', goal.id), {
+            collaborators: updatedCollabs.length > 0 ? updatedCollabs : [goal.ownerUid]
+          });
         }
-        await deleteDoc(doc(db, 'goals', goal.id));
       }
+      await updateDoc(doc(db, 'users', user.uid), {
+        partnerUid: deleteField()
+      });
+      setRelationshipData(undefined);
       setToast("Relationship ended. Funds split and shared dreams archived.");
       setIsBreakUpSummaryOpen(false);
     } catch (err) {
@@ -1783,13 +1816,13 @@ export default function App() {
       date: new Date().toISOString().split('T')[0],
       contributor: contributor,
       type: 'deposit',
+      collaborators: targetGoal.collaborators && targetGoal.collaborators.length > 0 ? targetGoal.collaborators : [user.uid],
       createdAt: new Date().toISOString()
     };
     try {
       await setDoc(doc(db, 'transactions', transactionId), transaction);
-      await setDoc(doc(db, 'goals', targetGoal.id), {
-        ...targetGoal,
-        currentAmount: targetGoal.currentAmount + amount
+      await updateDoc(doc(db, 'goals', targetGoal.id), {
+        currentAmount: increment(amount)
       });
       hapticSuccess();
       setToast(`R ${amount.toFixed(2)} treat recorded by ${contributor}! 🥂`);
@@ -1878,6 +1911,7 @@ export default function App() {
       contributor: data.contributor,
       type: 'deposit',
       notes: data.note,
+      collaborators: targetGoal.collaborators && targetGoal.collaborators.length > 0 ? targetGoal.collaborators : [user.uid],
       createdAt: new Date().toISOString()
     };
 
@@ -1886,9 +1920,8 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'transactions', transactionId), transaction);
-      await setDoc(doc(db, 'goals', targetGoal.id), {
-        ...targetGoal,
-        currentAmount: newAmount
+      await updateDoc(doc(db, 'goals', targetGoal.id), {
+        currentAmount: increment(data.amount)
       });
       if (reached100) {
         triggerGoalCelebration(targetGoal.name);
@@ -2258,6 +2291,13 @@ export default function App() {
   const handleDisconnectPartner = async () => {
     if (!user) return;
     setRelationshipData(undefined);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        partnerUid: deleteField()
+      });
+    } catch (err) {
+      console.warn("Disconnect partner in Firestore notice:", err);
+    }
     setToast("Partner disconnected. Shared records archived.");
   };
 
@@ -2275,25 +2315,27 @@ export default function App() {
   const handleAddAuditCorrection = async (originalTx: Transaction, correctionNote: string) => {
     if (!user) return;
     const correctionId = Math.random().toString(36).substr(2, 9);
+    const positiveAmount = Math.abs(originalTx.amount);
+    const targetGoal = goals.find(g => g.id === originalTx.goalId);
     const correctionTx: Transaction = {
       id: correctionId,
       ownerUid: user.uid,
       goalId: originalTx.goalId,
       goalName: `Correction: ${originalTx.goalName}`,
-      amount: -originalTx.amount,
+      amount: positiveAmount,
       date: new Date().toISOString().split('T')[0],
       contributor: originalTx.contributor,
       type: 'withdrawal',
       notes: `Reversal of tx ${originalTx.id}: ${correctionNote}`,
+      collaborators: originalTx.collaborators || (targetGoal?.collaborators && targetGoal.collaborators.length > 0 ? targetGoal.collaborators : [user.uid]),
       createdAt: new Date().toISOString()
     };
     try {
       await setDoc(doc(db, 'transactions', correctionId), correctionTx);
-      const targetGoal = goals.find(g => g.id === originalTx.goalId);
       if (targetGoal) {
-        await setDoc(doc(db, 'goals', targetGoal.id), {
-          ...targetGoal,
-          currentAmount: Math.max(0, targetGoal.currentAmount - originalTx.amount)
+        const decrementAmount = -Math.min(targetGoal.currentAmount, positiveAmount);
+        await updateDoc(doc(db, 'goals', targetGoal.id), {
+          currentAmount: increment(decrementAmount)
         });
       }
       setToast("Audit correction recorded.");
