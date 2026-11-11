@@ -75,7 +75,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // Connection Test
-async function testConnection() {
+export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
@@ -84,7 +84,10 @@ async function testConnection() {
     }
   }
 }
-testConnection();
+
+if (import.meta.env?.MODE !== 'test') {
+  testConnection();
+}
 
 export { 
   signInWithPopup, 
