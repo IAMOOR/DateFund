@@ -16,24 +16,7 @@ import {
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface Event {
-  id: string;
-  ownerUid: string;
-  title: string;
-  description?: string;
-  date: string;
-  time?: string;
-  location?: string;
-  goalId?: string;
-  reminder?: boolean;
-  reminderMinutes?: number;
-  reminderSent?: boolean;
-  tags?: string[];
-  collaborators: string[];
-  rsvps?: { [userId: string]: 'Going' | 'Maybe' | 'Not Going' };
-  createdAt: string;
-}
+import { Event } from '../types';
 
 interface CalendarProps {
   events: Event[];
