@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
 import { 
   Menu, 
   Plus, 
@@ -66,20 +66,20 @@ import CalendarComponent from './components/Calendar';
 import DateScrapbookModal from './components/scrapbook/DateScrapbookModal';
 import AnniversaryTracker from './components/milestones/AnniversaryTracker';
 import MysteryDateRevealModal from './components/mystery/MysteryDateRevealModal';
-import YearInLoveModal from './components/wrapped/YearInLoveModal';
+const YearInLoveModal = lazy(() => import('./components/wrapped/YearInLoveModal'));
 import PartnerInviteModal from './components/invite/PartnerInviteModal';
 import WhoTreatsSplitterModal from './components/splitter/WhoTreatsSplitterModal';
 import DateBucketListModal from './components/bucketlist/DateBucketListModal';
 import RomanticTipsModal from './components/modals/RomanticTipsModal';
-import GoogleDateMap from './components/maps/GoogleDateMap';
-import WishlistView from './components/views/WishlistView';
-import ScrapbookView from './components/views/ScrapbookView';
-import MilestonesView from './components/views/MilestonesView';
-import RelationshipSettingsView from './components/views/RelationshipSettingsView';
-import HistoryView from './components/views/HistoryView';
-import DiscoverView from './components/views/DiscoverView';
-import DreamsView from './components/views/DreamsView';
-import PartnerChatView from './components/views/PartnerChatView';
+const GoogleDateMap = lazy(() => import('./components/maps/GoogleDateMap'));
+const WishlistView = lazy(() => import('./components/views/WishlistView'));
+const ScrapbookView = lazy(() => import('./components/views/ScrapbookView'));
+const MilestonesView = lazy(() => import('./components/views/MilestonesView'));
+const RelationshipSettingsView = lazy(() => import('./components/views/RelationshipSettingsView'));
+const HistoryView = lazy(() => import('./components/views/HistoryView'));
+const DiscoverView = lazy(() => import('./components/views/DiscoverView'));
+const DreamsView = lazy(() => import('./components/views/DreamsView'));
+const PartnerChatView = lazy(() => import('./components/views/PartnerChatView'));
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
@@ -135,6 +135,7 @@ import {
   deleteField,
   updateDoc,
   increment,
+  writeBatch,
   deleteUser,
   handleFirestoreError, 
   OperationType,
@@ -1843,13 +1844,23 @@ export default function App() {
     const targetId = goalToDelete;
     setGoalToDelete(null);
     setGoals(prev => prev.filter(g => g.id !== targetId));
+    setTransactions(prev => prev.filter(t => t.goalId !== targetId));
     if (isDemoMode) {
       setToast("Goal deleted successfully.");
       return;
     }
     try {
-      await deleteDoc(doc(db, 'goals', targetId));
-      setToast("Goal deleted successfully.");
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'goals', targetId));
+      // Purge owned orphaned transactions associated with this goal
+      if (user) {
+        const ownedGoalTxs = transactions.filter(t => t.goalId === targetId && t.ownerUid === user.uid);
+        for (const tx of ownedGoalTxs) {
+          batch.delete(doc(db, 'transactions', tx.id));
+        }
+      }
+      await batch.commit();
+      setToast("Goal and associated records deleted.");
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `goals/${targetId}`);
     }
@@ -3089,7 +3100,13 @@ export default function App() {
       </AnimatePresence>
 
       <main className="pt-[calc(5rem+max(env(safe-area-inset-top,0px),0px))] md:pt-24 pb-32 sm:pb-36 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full transition-all duration-300">
-        <AnimatePresence mode="wait">
+        <Suspense fallback={
+          <div className="flex flex-col items-center justify-center py-24 space-y-3 text-outline">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="text-xs font-medium tracking-wide">Loading view...</span>
+          </div>
+        }>
+          <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div
               key="home"
@@ -4517,6 +4534,7 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+        </Suspense>
       </main>
 
       {/* Side Menu */}
@@ -5727,15 +5745,17 @@ export default function App() {
       />
 
       {/* Year in Love (Wrapped) Modal */}
-      <YearInLoveModal
-        isOpen={isWrappedModalOpen}
-        onClose={() => setIsWrappedModalOpen(false)}
-        goals={goals}
-        transactions={transactions}
-        events={events}
-        startDate={relationshipStartDate}
-        reportingYear={2026}
-      />
+      <Suspense fallback={null}>
+        <YearInLoveModal
+          isOpen={isWrappedModalOpen}
+          onClose={() => setIsWrappedModalOpen(false)}
+          goals={goals}
+          transactions={transactions}
+          events={events}
+          startDate={relationshipStartDate}
+          reportingYear={2026}
+        />
+      </Suspense>
 
       {/* Partner Invite Link & QR Code Modal */}
       <PartnerInviteModal

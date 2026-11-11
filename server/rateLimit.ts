@@ -23,9 +23,28 @@ export class MemoryQuotaStore implements QuotaStore {
   private globalWindows: Map<string, { count: number; expiresAt: number }> = new Map();
   private activeUserRequests: Map<string, number> = new Map();
   private totalActiveRequests: number = 0;
+  private lastPruneAt: number = 0;
+
+  private pruneExpiredWindows(now: number): void {
+    if (now - this.lastPruneAt < 60_000 && this.userWindows.size <= 500) {
+      return;
+    }
+    this.lastPruneAt = now;
+    for (const [key, entry] of this.userWindows) {
+      if (now > entry.expiresAt) {
+        this.userWindows.delete(key);
+      }
+    }
+    for (const [key, entry] of this.globalWindows) {
+      if (now > entry.expiresAt) {
+        this.globalWindows.delete(key);
+      }
+    }
+  }
 
   async incrementUserCount(uid: string, windowSeconds: number): Promise<number> {
     const now = Date.now();
+    this.pruneExpiredWindows(now);
     const key = `${uid}_${windowSeconds}`;
     const entry = this.userWindows.get(key);
 
@@ -40,6 +59,7 @@ export class MemoryQuotaStore implements QuotaStore {
 
   async incrementGlobalCount(windowSeconds: number): Promise<number> {
     const now = Date.now();
+    this.pruneExpiredWindows(now);
     const key = `global_${windowSeconds}`;
     const entry = this.globalWindows.get(key);
 
