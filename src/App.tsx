@@ -136,6 +136,7 @@ import {
   updateDoc,
   increment,
   deleteUser,
+  writeBatch,
   handleFirestoreError, 
   OperationType,
   User
@@ -759,28 +760,54 @@ export default function App() {
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
+        let goalBatch = writeBatch(db);
+        let goalBatchCount = 0;
+
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+          if (!data.collaborators || !Array.isArray(data.collaborators) || data.collaborators.length === 0) {
+            goalBatch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            goalBatchCount++;
+
+            if (goalBatchCount === 500) {
+              await goalBatch.commit();
+              goalBatch = writeBatch(db);
+              goalBatchCount = 0;
+            }
           }
+        }
+        if (goalBatchCount > 0) {
+          await goalBatch.commit();
         }
 
         // Fix Events
         const qEvents = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
         const snapEvents = await getDocs(qEvents);
+        let eventBatch = writeBatch(db);
+        let eventBatchCount = 0;
+
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
-          if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+          if (!data.collaborators || !Array.isArray(data.collaborators) || data.collaborators.length === 0) {
+            eventBatch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
-              rsvps: { [user.uid]: 'Going' }
+              rsvps: data.rsvps || { [user.uid]: 'Going' }
             }, { merge: true });
+            eventBatchCount++;
+
+            if (eventBatchCount === 500) {
+              await eventBatch.commit();
+              eventBatch = writeBatch(db);
+              eventBatchCount = 0;
+            }
           }
+        }
+        if (eventBatchCount > 0) {
+          await eventBatch.commit();
         }
       } catch (err) {
         // Silent fail for migration
