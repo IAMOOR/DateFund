@@ -28,6 +28,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
+  writeBatch,
   getDocFromServer, 
   Timestamp, 
   deleteField,
@@ -140,6 +141,7 @@ export {
   addDoc, 
   updateDoc, 
   deleteDoc,
+  writeBatch,
   deleteField,
   increment,
   deleteUser

@@ -132,6 +132,7 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
+  writeBatch,
   deleteField,
   updateDoc,
   increment,
@@ -1595,23 +1596,29 @@ export default function App() {
     if (!user) return;
     try {
       const sharedGoals = goals.filter(g => g.collaborators.length > 1);
+      const batch = writeBatch(db);
+
       for (const goal of sharedGoals) {
         if (goal.ownerUid === user.uid) {
-          await updateDoc(doc(db, 'goals', goal.id), {
+          batch.update(doc(db, 'goals', goal.id), {
             collaborators: [user.uid],
             archived: true,
             archivedAt: new Date().toISOString()
           });
         } else {
           const updatedCollabs = goal.collaborators.filter(uid => uid !== user.uid);
-          await updateDoc(doc(db, 'goals', goal.id), {
+          batch.update(doc(db, 'goals', goal.id), {
             collaborators: updatedCollabs.length > 0 ? updatedCollabs : [goal.ownerUid]
           });
         }
       }
-      await updateDoc(doc(db, 'users', user.uid), {
+
+      batch.update(doc(db, 'users', user.uid), {
         partnerUid: deleteField()
       });
+
+      await batch.commit();
+
       setRelationshipData(undefined);
       setToast("Relationship ended. Funds split and shared dreams archived.");
       setIsBreakUpSummaryOpen(false);
