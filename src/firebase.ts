@@ -31,7 +31,8 @@ import {
   getDocFromServer, 
   Timestamp, 
   deleteField,
-  increment 
+  increment,
+  writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -142,6 +143,7 @@ export {
   deleteDoc,
   deleteField,
   increment,
-  deleteUser
+  deleteUser,
+  writeBatch
 };
 export type { User };

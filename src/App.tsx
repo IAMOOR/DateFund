@@ -136,6 +136,7 @@ import {
   updateDoc,
   increment,
   deleteUser,
+  writeBatch,
   handleFirestoreError, 
   OperationType,
   User
@@ -759,28 +760,40 @@ export default function App() {
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
+        const goalsBatch = writeBatch(db);
+        let goalsOpsCount = 0;
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+            goalsBatch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            goalsOpsCount++;
           }
+        }
+        if (goalsOpsCount > 0) {
+          await goalsBatch.commit();
         }
 
         // Fix Events
         const qEvents = query(collection(db, 'events'), where('ownerUid', '==', user.uid));
         const snapEvents = await getDocs(qEvents);
+        const eventsBatch = writeBatch(db);
+        let eventsOpsCount = 0;
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+            eventsBatch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
               rsvps: { [user.uid]: 'Going' }
             }, { merge: true });
+            eventsOpsCount++;
           }
+        }
+        if (eventsOpsCount > 0) {
+          await eventsBatch.commit();
         }
       } catch (err) {
         // Silent fail for migration
