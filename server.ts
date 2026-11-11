@@ -68,18 +68,25 @@ export function getAiClient(): GoogleGenAI | null {
 }
 
 function handleGeminiFallbackError(routeName: string, err: any): void {
-  const rawMessage = typeof err?.message === "string" ? err.message : String(err || "Unknown error");
-  if (rawMessage.includes("API_KEY_INVALID") || rawMessage.includes("API key not valid")) {
+  const rawMessage = typeof err?.message === "string" ? err.message : String(err || "Unknown notice");
+  if (
+    rawMessage.includes("API_KEY_INVALID") ||
+    rawMessage.includes("API key not valid") ||
+    rawMessage.includes("PERMISSION_DENIED") ||
+    rawMessage.includes("reported as leaked") ||
+    rawMessage.includes("unregistered callers") ||
+    rawMessage.includes("403")
+  ) {
     const currentKey = process.env.GEMINI_API_KEY?.trim();
     if (currentKey) {
       rejectedApiKeys.add(currentKey);
     }
-    console.warn(
-      `[Server] ${routeName}: GEMINI_API_KEY is invalid or not configured in Settings > Secrets. Using curated fallback.`
+    console.info(
+      `[Server] ${routeName}: Using curated romantic fallback data (GEMINI_API_KEY can be updated in Settings > Secrets).`
     );
     return;
   }
-  console.warn(`[Server] ${routeName} fallback activated:`, rawMessage);
+  console.info(`[Server] ${routeName}: Using curated fallback data.`);
 }
 
 // Initial check at startup

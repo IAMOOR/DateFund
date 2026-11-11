@@ -64,6 +64,7 @@
         "contributor": { "type": "string", "enum": ["Me", "Them"] },
         "type": { "type": "string", "enum": ["deposit", "withdrawal"] },
         "notes": { "type": "string" },
+        "collaborators": { "type": "array", "description": "List of UIDs who can access the transaction" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "ownerUid", "goalId", "amount", "date", "contributor", "type"]
@@ -81,6 +82,10 @@
         "time": { "type": "string" },
         "location": { "type": "string" },
         "goalId": { "type": "string" },
+        "estimatedBudget": { "type": "number" },
+        "dressCode": { "type": "string" },
+        "checklist": { "type": "array" },
+        "itinerary": { "type": "array" },
         "reminder": { "type": "boolean" },
         "reminderMinutes": { "type": "number" },
         "reminderSent": { "type": "boolean" },

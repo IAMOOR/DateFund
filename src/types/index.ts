@@ -36,6 +36,17 @@ export interface DateMemory {
 
 export type DateMood = 'Romantic' | 'Adventurous' | 'Cozy' | 'Playful' | 'Luxurious' | 'Relaxed';
 
+export interface DateChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface DateItineraryStop {
+  time: string;
+  activity: string;
+}
+
 export interface Event {
   id: string;
   ownerUid: string;
@@ -45,6 +56,10 @@ export interface Event {
   time?: string;
   location?: string;
   goalId?: string;
+  estimatedBudget?: number;
+  dressCode?: string;
+  checklist?: DateChecklistItem[];
+  itinerary?: DateItineraryStop[];
   reminder?: boolean;
   reminderMinutes?: number;
   reminderSent?: boolean;

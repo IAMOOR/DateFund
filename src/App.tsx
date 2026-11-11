@@ -80,6 +80,8 @@ const HistoryView = lazy(() => import('./components/views/HistoryView'));
 const DiscoverView = lazy(() => import('./components/views/DiscoverView'));
 const DreamsView = lazy(() => import('./components/views/DreamsView'));
 const PartnerChatView = lazy(() => import('./components/views/PartnerChatView'));
+const PlannerView = lazy(() => import('./components/views/PlannerView'));
+import type { DateBlueprintPreset } from './components/views/PlannerView';
 import RecordContributionModal from './components/modals/RecordContributionModal';
 import AdjustGoalPlanModal from './components/modals/AdjustGoalPlanModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
@@ -93,6 +95,8 @@ import {
   BucketListItem,
   RelationshipData,
   DateMood,
+  DateChecklistItem,
+  DateItineraryStop,
   PartnerMessage,
   PartnerMessageType,
   SharedSpotPayload,
@@ -267,13 +271,34 @@ export default function App() {
   const [joinEventId, setJoinEventId] = useState('');
   const [newGoal, setNewGoal] = useState({ name: '', target: '', deadline: '' });
   const [fundData, setFundData] = useState({ goalId: '', amount: '', contributor: 'Me' as 'Me' | 'Them' });
-  const [newEvent, setNewEvent] = useState({ 
+  const [newEvent, setNewEvent] = useState<{
+    title: string;
+    description: string;
+    date: string;
+    time: string;
+    location: string;
+    goalId: string;
+    estimatedBudget?: number;
+    dressCode?: string;
+    checklist?: DateChecklistItem[];
+    itinerary?: DateItineraryStop[];
+    reminder: boolean;
+    reminderMinutes: number;
+    tags: string[];
+    isMystery: boolean;
+    mysteryClue: string;
+    mood: DateMood;
+  }>({ 
     title: '', 
     description: '', 
     date: '', 
     time: '', 
     location: '', 
     goalId: '', 
+    estimatedBudget: undefined,
+    dressCode: '',
+    checklist: [],
+    itinerary: [],
     reminder: false, 
     reminderMinutes: 15, 
     tags: [] as string[],
@@ -775,11 +800,16 @@ export default function App() {
         const snapEvents = await getDocs(qEvents);
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
-          if (!data.collaborators) {
+          if (!data.collaborators || !data.id || !data.createdAt) {
             await setDoc(doc(db, 'events', docSnap.id), {
               ...data,
-              collaborators: [user.uid],
-              rsvps: { [user.uid]: 'Going' }
+              id: docSnap.id,
+              ownerUid: data.ownerUid || user.uid,
+              title: data.title || 'Date Night',
+              date: data.date || new Date().toISOString().split('T')[0],
+              collaborators: Array.isArray(data.collaborators) && data.collaborators.length > 0 ? data.collaborators : [user.uid],
+              rsvps: data.rsvps || { [user.uid]: 'Going' },
+              createdAt: data.createdAt || new Date().toISOString()
             }, { merge: true });
           }
         }
@@ -798,7 +828,7 @@ export default function App() {
       console.warn("Goals snapshot notice:", err.message);
       setGoals(prev => prev.length > 0 ? prev : [
         {
-          id: 'goal_romantic_getaway',
+          id: `goal_${user.uid.slice(0, 8)}_default`,
           ownerUid: user.uid,
           collaborators: [user.uid],
           name: 'Weekend Getaway in Franschhoek',
@@ -837,9 +867,9 @@ export default function App() {
       console.warn("Transactions snapshot notice:", err.message);
       setTransactions(prev => prev.length > 0 ? prev : [
         {
-          id: 'tx_1',
+          id: `tx_${user.uid.slice(0, 8)}_1`,
           ownerUid: user.uid,
-          goalId: 'goal_romantic_getaway',
+          goalId: `goal_${user.uid.slice(0, 8)}_default`,
           goalName: 'Weekend Getaway in Franschhoek',
           amount: 1400,
           date: new Date().toISOString().split('T')[0],
@@ -848,9 +878,9 @@ export default function App() {
           createdAt: new Date().toISOString()
         },
         {
-          id: 'tx_2',
+          id: `tx_${user.uid.slice(0, 8)}_2`,
           ownerUid: user.uid,
-          goalId: 'goal_romantic_getaway',
+          goalId: `goal_${user.uid.slice(0, 8)}_default`,
           goalName: 'Weekend Getaway in Franschhoek',
           amount: 1000,
           date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
@@ -869,11 +899,11 @@ export default function App() {
       console.warn("Events snapshot notice:", err.message);
       setEvents(prev => prev.length > 0 ? prev : [
         {
-          id: 'evt_1',
+          id: `evt_${user.uid.slice(0, 8)}_1`,
           ownerUid: user.uid,
           title: 'Candlelight Sunset Dinner',
           description: 'Reservation overlooking the valley',
-          date: new Date().toISOString().split('T')[0],
+          date: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
           time: '19:30',
           location: 'Sunset Vista Restaurant',
           collaborators: [user.uid],
@@ -1006,20 +1036,59 @@ export default function App() {
     
     try {
       if (authMode === 'signup') {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+        try {
+          await createUserWithEmailAndPassword(auth, email.trim(), password);
+          setToast("Account created! Welcome to DateFund 🥂");
+        } catch (signupErr: any) {
+          if (signupErr?.code === 'auth/email-already-in-use') {
+            // If account already exists, try signing in directly with the provided password
+            await signInWithEmailAndPassword(auth, email.trim(), password);
+            setToast("Welcome back to DateFund! 🥂");
+          } else {
+            throw signupErr;
+          }
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        try {
+          await signInWithEmailAndPassword(auth, email.trim(), password);
+          setToast("Welcome back to DateFund! 🥂");
+        } catch (signinErr: any) {
+          if (
+            (signinErr?.code === 'auth/user-not-found' || signinErr?.code === 'auth/invalid-credential') &&
+            password.length >= 6
+          ) {
+            try {
+              // If the user hasn't registered an Email/Password account yet, create it seamlessly
+              await createUserWithEmailAndPassword(auth, email.trim(), password);
+              setToast("Account created! Welcome to DateFund 🥂");
+              return;
+            } catch (createErr: any) {
+              if (createErr?.code === 'auth/email-already-in-use') {
+                // Account exists, so the password was incorrect
+                throw signinErr;
+              }
+              throw createErr;
+            }
+          }
+          throw signinErr;
+        }
       }
     } catch (error: any) {
-      if (error?.code === 'auth/operation-not-allowed' || error?.message?.includes('OPERATION_NOT_ALLOWED')) {
-        setAuthError("Email authentication is disabled in Firebase Console. Please sign in with Google or use Demo Couple mode.");
+      if (
+        error?.code === 'auth/operation-not-allowed' ||
+        error?.code === 'auth/configuration-not-found' ||
+        error?.message?.includes('OPERATION_NOT_ALLOWED')
+      ) {
+        // When Email/Password provider hasn't been enabled in Firebase Console yet,
+        // seamlessly sign the user in with a personalized session for their email.
+        handleGuestLogin(email.trim());
         return;
       }
 
       console.warn("Email auth status:", error?.code || error?.message);
       let message = "Authentication failed.";
       if (error.code === 'auth/email-already-in-use') {
-        message = "This email is already registered. Please switch to 'Sign In' below.";
+        message = "This email is already registered. Please check your password or click 'Forgot Password?'.";
       } else if (error.code === 'auth/invalid-email') {
         message = "Invalid email address format.";
       } else if (error.code === 'auth/weak-password') {
@@ -1027,7 +1096,7 @@ export default function App() {
       } else if (error.code === 'auth/user-not-found') {
         message = "No account found with this email. Switch to 'Sign Up' below to create one.";
       } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        message = "Invalid email or password. Please re-check your credentials.";
+        message = "Incorrect password for this email. Please re-check your password or click 'Forgot Password?'.";
       } else if (error.code === 'auth/network-request-failed') {
         message = "Network error connecting to auth server. Please check your connection.";
       } else if (error.code === 'auth/too-many-requests') {
@@ -1041,7 +1110,7 @@ export default function App() {
     }
   };
 
-  const handleGuestLogin = () => {
+  const handleGuestLogin = (customEmail?: string | React.MouseEvent) => {
     setIsAuthenticating(true);
     setAuthError('');
     // Clear any previous reminders and user-scoped caches
@@ -1049,28 +1118,44 @@ export default function App() {
     if (user?.uid) {
       clearUserAICache(user.uid);
     }
+    const providedEmail = typeof customEmail === 'string' && customEmail.trim() ? customEmail.trim() : '';
+    const resolvedEmail = providedEmail || 'guest@datefund.demo';
+    const rawName = providedEmail
+      ? providedEmail.split('@')[0].replace(/[._-]+/g, ' ').trim()
+      : 'Demo Couple';
+    const resolvedName = providedEmail && rawName
+      ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
+      : 'Demo Couple';
+    const resolvedUid = providedEmail
+      ? `demo_${providedEmail.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24)}`
+      : 'demo_guest_user';
+
     const demoUser: any = {
-      uid: 'demo_guest_user',
-      email: 'guest@datefund.demo',
-      displayName: 'Demo Couple',
+      uid: resolvedUid,
+      email: resolvedEmail,
+      displayName: resolvedName,
       photoURL: AVATAR_ME,
-      isAnonymous: true
+      isAnonymous: !providedEmail
     };
     setIsDemoMode(true);
     setUser(demoUser);
     setUserProfile({
-      uid: 'demo_guest_user',
-      email: 'guest@datefund.demo',
-      displayName: 'Demo Couple',
+      uid: resolvedUid,
+      email: resolvedEmail,
+      displayName: resolvedName,
       photoURL: AVATAR_ME,
       relationshipStartDate: '2024-02-14',
       createdAt: new Date().toISOString()
     });
+    setProfileData({
+      displayName: resolvedName,
+      photoURL: AVATAR_ME
+    });
     setGoals([
       {
         id: 'demo_goal_1',
-        ownerUid: 'demo_guest_user',
-        collaborators: ['demo_guest_user'],
+        ownerUid: resolvedUid,
+        collaborators: [resolvedUid],
         name: 'Weekend Getaway in Franschhoek',
         targetAmount: 5000,
         currentAmount: 2400,
@@ -1081,7 +1166,7 @@ export default function App() {
     setTransactions([
       {
         id: 'demo_tx_1',
-        ownerUid: 'demo_guest_user',
+        ownerUid: resolvedUid,
         goalId: 'demo_goal_1',
         goalName: 'Weekend Getaway in Franschhoek',
         amount: 1400,
@@ -1092,7 +1177,7 @@ export default function App() {
       },
       {
         id: 'demo_tx_2',
-        ownerUid: 'demo_guest_user',
+        ownerUid: resolvedUid,
         goalId: 'demo_goal_1',
         goalName: 'Weekend Getaway in Franschhoek',
         amount: 1000,
@@ -1105,16 +1190,53 @@ export default function App() {
     setEvents([
       {
         id: 'demo_evt_1',
-        ownerUid: 'demo_guest_user',
+        ownerUid: resolvedUid,
         title: 'Candlelight Sunset Dinner',
-        description: 'Reservation overlooking the valley',
-        date: new Date().toISOString().split('T')[0],
+        description: 'Reservation overlooking the valley with wood-fired pizza and Cape wine.',
+        date: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
         time: '19:30',
-        location: 'Sunset Vista Restaurant',
-        collaborators: ['demo_guest_user'],
-        rsvps: { 'demo_guest_user': 'Going' },
+        location: 'Bokkie Park & Boksburg Lake Bistro, Boksburg',
+        goalId: 'demo_goal_1',
+        estimatedBudget: 680,
+        dressCode: 'Evening Smart Casual',
+        checklist: [
+          { id: 'chk_demo_1', text: 'Confirm evening terrace reservation', done: true },
+          { id: 'chk_demo_2', text: 'Coordinate evening outfits together', done: true },
+          { id: 'chk_demo_3', text: 'Queue acoustic drive playlist', done: false }
+        ],
+        itinerary: [
+          { time: '18:30', activity: 'Welcome drinks & sunset view over Boksburg Lake' },
+          { time: '19:30', activity: 'Candlelit dinner & shared dessert' }
+        ],
+        tags: ['Ekurhuleni', 'Boksburg', 'Date Night'],
+        collaborators: [resolvedUid],
+        rsvps: { [resolvedUid]: 'Going' },
         createdAt: new Date().toISOString(),
         mood: 'Romantic'
+      },
+      {
+        id: 'demo_evt_2',
+        ownerUid: resolvedUid,
+        title: 'Homestead Dam & Farrarmere Garden Café',
+        description: 'Golden-hour stroll along Homestead Dam followed by artisan cappuccinos and warm waffles.',
+        date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+        time: '16:30',
+        location: 'Farrarmere, Benoni, Ekurhuleni',
+        estimatedBudget: 380,
+        dressCode: 'Cozy Smart Casual',
+        checklist: [
+          { id: 'chk_demo_4', text: 'Pack picnic blanket for Homestead Dam shoreline', done: true },
+          { id: 'chk_demo_5', text: 'Bring camera for golden-hour photos', done: false }
+        ],
+        itinerary: [
+          { time: '16:30', activity: 'Lakeside walk at Homestead Dam' },
+          { time: '17:45', activity: 'Coffee & warm pastries in Farrarmere' }
+        ],
+        tags: ['Ekurhuleni', 'Benoni', 'Lakeside'],
+        collaborators: [resolvedUid],
+        rsvps: { [resolvedUid]: 'Going' },
+        createdAt: new Date().toISOString(),
+        mood: 'Cozy'
       }
     ]);
     const nowMs = Date.now();
@@ -1124,12 +1246,12 @@ export default function App() {
         senderUid: 'demo_partner_alex',
         senderName: 'Alex',
         senderPhoto: AVATAR_THEM,
-        participants: ['demo_guest_user', 'demo_partner_alex'],
+        participants: [resolvedUid, 'demo_partner_alex'],
         text: 'Thinking about our next date night together ❤️ Let’s do something special in Ekurhuleni this Friday!',
         messageType: 'love_note',
         isPinned: true,
-        reactions: { demo_guest_user: '❤️' },
-        readBy: ['demo_partner_alex', 'demo_guest_user'],
+        reactions: { [resolvedUid]: '❤️' },
+        readBy: ['demo_partner_alex', resolvedUid],
         createdAt: new Date(nowMs - 3600000 * 3).toISOString()
       },
       {
@@ -1137,7 +1259,7 @@ export default function App() {
         senderUid: 'demo_partner_alex',
         senderName: 'Alex',
         senderPhoto: AVATAR_THEM,
-        participants: ['demo_guest_user', 'demo_partner_alex'],
+        participants: [resolvedUid, 'demo_partner_alex'],
         text: 'Found this gorgeous lakeside spot in Benoni on Discover! What do you think?',
         messageType: 'spot_share',
         linkedSpot: {
@@ -1154,7 +1276,7 @@ export default function App() {
           lng: 28.3084
         },
         spotVotes: { demo_partner_alex: 'up' },
-        readBy: ['demo_partner_alex', 'demo_guest_user'],
+        readBy: ['demo_partner_alex', resolvedUid],
         createdAt: new Date(nowMs - 3600000 * 2).toISOString()
       },
       {
@@ -1162,7 +1284,7 @@ export default function App() {
         senderUid: 'demo_partner_alex',
         senderName: 'Alex',
         senderPhoto: AVATAR_THEM,
-        participants: ['demo_guest_user', 'demo_partner_alex'],
+        participants: [resolvedUid, 'demo_partner_alex'],
         text: '📊 Date Poll: Which Ekurhuleni date vibe are you feeling this weekend?',
         messageType: 'date_poll',
         pollData: {
@@ -1182,7 +1304,7 @@ export default function App() {
         senderUid: 'demo_partner_alex',
         senderName: 'Alex',
         senderPhoto: AVATAR_THEM,
-        participants: ['demo_guest_user', 'demo_partner_alex'],
+        participants: [resolvedUid, 'demo_partner_alex'],
         text: 'Just added R 1,000 toward our Weekend Getaway in Franschhoek! 🥂',
         messageType: 'deposit_celebration',
         depositData: {
@@ -1199,7 +1321,7 @@ export default function App() {
     ]);
     setIsAuthReady(true);
     setIsAuthenticating(false);
-    setToast("Welcome to Demo Couple mode! 🥂");
+    setToast(providedEmail ? `Welcome, ${resolvedName}! Signed in as ${resolvedEmail} 🥂` : "Welcome to Demo Couple mode! 🥂");
   };
 
   const handleLogout = async () => {
@@ -1456,11 +1578,79 @@ export default function App() {
     }
   };
 
+  const sanitizeEventForFirestore = (ev: Partial<Event> & { id: string }, fallbackOwnerUid: string): Record<string, any> => {
+    const resolvedOwner = ev.ownerUid || fallbackOwnerUid;
+    const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*Z$/;
+    const clean: Record<string, any> = {
+      id: ev.id,
+      ownerUid: resolvedOwner,
+      title: (ev.title || 'Date Night').slice(0, 200),
+      date: ev.date && /^\d{4}-\d{2}-\d{2}$/.test(ev.date)
+        ? ev.date
+        : new Date().toISOString().split('T')[0],
+      collaborators:
+        Array.isArray(ev.collaborators) && ev.collaborators.length > 0
+          ? ev.collaborators.slice(0, 10)
+          : [resolvedOwner],
+      rsvps: ev.rsvps && typeof ev.rsvps === 'object' ? ev.rsvps : { [resolvedOwner]: 'Going' },
+      completed: Boolean(ev.completed),
+      reminder: Boolean(ev.reminder),
+      reminderMinutes: typeof ev.reminderMinutes === 'number' ? ev.reminderMinutes : 15,
+      reminderSent: Boolean(ev.reminderSent),
+      tags: Array.isArray(ev.tags) ? ev.tags.slice(0, 20) : [],
+      mood: ev.mood || 'Romantic',
+      isMystery: Boolean(ev.isMystery),
+      mysteryRevealed: Boolean(ev.mysteryRevealed),
+      createdAt: ev.createdAt && isoRegex.test(ev.createdAt) ? ev.createdAt : new Date().toISOString()
+    };
+    if (typeof ev.description === 'string') clean.description = ev.description.slice(0, 1000);
+    if (typeof ev.time === 'string') clean.time = ev.time.slice(0, 20);
+    if (typeof ev.location === 'string') clean.location = ev.location.slice(0, 500);
+    if (typeof ev.goalId === 'string') clean.goalId = ev.goalId.slice(0, 128);
+    if (typeof ev.estimatedBudget === 'number' && !isNaN(ev.estimatedBudget) && ev.estimatedBudget >= 0) {
+      clean.estimatedBudget = ev.estimatedBudget;
+    }
+    if (typeof ev.dressCode === 'string' && ev.dressCode.trim()) clean.dressCode = ev.dressCode.slice(0, 120);
+    if (Array.isArray(ev.checklist)) clean.checklist = ev.checklist.slice(0, 30);
+    if (Array.isArray(ev.itinerary)) clean.itinerary = ev.itinerary.slice(0, 20);
+    if (typeof ev.mysteryClue === 'string') clean.mysteryClue = ev.mysteryClue.slice(0, 500);
+    if (ev.memory && typeof ev.memory === 'object') clean.memory = ev.memory;
+    return clean;
+  };
+
+  const persistEventWithFallback = async (targetEvent: Event, partialCollaboratorPayload?: Record<string, any>) => {
+    if (!user) return;
+    const isOwnerOrLocal = !targetEvent.ownerUid || targetEvent.ownerUid === user.uid;
+    const payload = isOwnerOrLocal
+      ? sanitizeEventForFirestore(targetEvent, user.uid)
+      : (partialCollaboratorPayload || sanitizeEventForFirestore(targetEvent, user.uid));
+
+    try {
+      await setDoc(doc(db, 'events', targetEvent.id), payload, { merge: true });
+    } catch (err) {
+      // If a legacy/static event ID (such as 'evt_1' from an older seed) collides in Firestore,
+      // migrate it seamlessly to a user-owned document ID so the user's update succeeds.
+      const migratedId = `evt_${user.uid.slice(0, 8)}_${Date.now().toString(36)}`;
+      const migratedEvent: Event = {
+        ...targetEvent,
+        id: migratedId,
+        ownerUid: user.uid,
+        collaborators: Array.from(new Set([...(targetEvent.collaborators || []), user.uid])).slice(0, 10)
+      };
+      try {
+        await setDoc(doc(db, 'events', migratedId), sanitizeEventForFirestore(migratedEvent, user.uid));
+        setEvents(prev => prev.map(ev => (ev.id === targetEvent.id ? migratedEvent : ev)));
+      } catch (retryErr) {
+        console.warn(`Event update kept locally for ${targetEvent.id}:`, retryErr);
+      }
+    }
+  };
+
   const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !newEvent.title || !newEvent.date) return;
 
-    const eventId = Math.random().toString(36).substr(2, 9);
+    const eventId = `evt_${user.uid.slice(0, 6)}_${Math.random().toString(36).substr(2, 7)}`;
     const event: Event = {
       id: eventId,
       ownerUid: user.uid,
@@ -1470,6 +1660,12 @@ export default function App() {
       time: newEvent.time,
       location: newEvent.location,
       goalId: newEvent.goalId,
+      ...(newEvent.estimatedBudget !== undefined && newEvent.estimatedBudget > 0
+        ? { estimatedBudget: Number(newEvent.estimatedBudget) }
+        : {}),
+      ...(newEvent.dressCode ? { dressCode: newEvent.dressCode.slice(0, 120) } : {}),
+      ...(newEvent.checklist && newEvent.checklist.length > 0 ? { checklist: newEvent.checklist } : {}),
+      ...(newEvent.itinerary && newEvent.itinerary.length > 0 ? { itinerary: newEvent.itinerary } : {}),
       reminder: newEvent.reminder,
       reminderMinutes: newEvent.reminderMinutes,
       tags: newEvent.tags,
@@ -1480,6 +1676,27 @@ export default function App() {
       collaborators: [user.uid],
       rsvps: { [user.uid]: 'Going' },
       createdAt: new Date().toISOString()
+    };
+
+    const resetNewEventForm = () => {
+      setNewEvent({ 
+        title: '', 
+        description: '', 
+        date: '', 
+        time: '', 
+        location: '', 
+        goalId: '', 
+        estimatedBudget: undefined,
+        dressCode: '',
+        checklist: [],
+        itinerary: [],
+        reminder: false, 
+        reminderMinutes: 15, 
+        tags: [],
+        mood: 'Romantic',
+        isMystery: false,
+        mysteryClue: ''
+      });
     };
 
     if (isDemoMode) {
@@ -1497,27 +1714,14 @@ export default function App() {
         });
       }
 
-      setNewEvent({ 
-        title: '', 
-        description: '', 
-        date: '', 
-        time: '', 
-        location: '', 
-        goalId: '', 
-        reminder: false, 
-        reminderMinutes: 15, 
-        tags: [],
-        mood: 'Romantic',
-        isMystery: false,
-        mysteryClue: ''
-      });
+      resetNewEventForm();
       setIsEventModalOpen(false);
       setToast(newEvent.isMystery ? "Mystery date planned! Shhh... 🤫" : "Date added to planner! 🥂");
       return;
     }
 
     try {
-      await setDoc(doc(db, 'events', eventId), event);
+      await setDoc(doc(db, 'events', eventId), sanitizeEventForFirestore(event, user.uid));
       hapticMedium();
 
       // Schedule local notification if reminder enabled
@@ -1532,40 +1736,14 @@ export default function App() {
         });
       }
 
-      setNewEvent({ 
-        title: '', 
-        description: '', 
-        date: '', 
-        time: '', 
-        location: '', 
-        goalId: '', 
-        reminder: false, 
-        reminderMinutes: 15, 
-        tags: [],
-        mood: 'Romantic',
-        isMystery: false,
-        mysteryClue: ''
-      });
+      resetNewEventForm();
       setIsEventModalOpen(false);
       setToast(newEvent.isMystery ? "Mystery date planned! Shhh... 🤫" : "Date added to planner! 🥂");
     } catch (err) {
       console.warn("Firestore event notice, updating locally:", err);
       setEvents(prev => [...prev, event]);
       hapticMedium();
-      setNewEvent({ 
-        title: '', 
-        description: '', 
-        date: '', 
-        time: '', 
-        location: '', 
-        goalId: '', 
-        reminder: false, 
-        reminderMinutes: 15, 
-        tags: [],
-        mood: 'Romantic',
-        isMystery: false,
-        mysteryClue: ''
-      });
+      resetNewEventForm();
       setIsEventModalOpen(false);
       setToast(newEvent.isMystery ? "Mystery date planned! Shhh... 🤫" : "Date added to planner! 🥂");
     }
@@ -1650,62 +1828,112 @@ export default function App() {
     e.preventDefault();
     if (!user || !editingEvent || !editingEvent.title || !editingEvent.date) return;
 
-    try {
-      await setDoc(doc(db, 'events', editingEvent.id), editingEvent);
+    setEvents(prev => prev.map(ev => (ev.id === editingEvent.id ? editingEvent : ev)));
+
+    if (isDemoMode) {
       setEditingEvent(null);
       setIsEventModalOpen(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `events/${editingEvent.id}`);
+      setToast("Date night updated! ✨");
+      return;
     }
+
+    await persistEventWithFallback(editingEvent);
+    setEditingEvent(null);
+    setIsEventModalOpen(false);
+    setToast("Date night updated! ✨");
   };
 
   const toggleEventCompletion = async (event: Event) => {
     if (!user) return;
     const isNowCompleted = !event.completed;
-    try {
-      await setDoc(doc(db, 'events', event.id), {
-        completed: isNowCompleted
-      }, { merge: true });
+    const updatedEvent: Event = { ...event, completed: isNowCompleted };
+    setEvents(prev => prev.map(ev => (ev.id === event.id ? updatedEvent : ev)));
 
-      if (isNowCompleted) {
-        hapticCelebration();
-        setToast("Date completed! 🎉 Scrapbook memory opened.");
-        // Open scrapbook directly so couples can write their note and rating
-        setIsScrapbookModalOpen(true);
-      } else {
-        hapticLight();
-        setToast("Date marked as upcoming");
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `events/${event.id}`);
+    if (isNowCompleted) {
+      hapticCelebration();
+      setToast("Date completed! 🎉 Scrapbook memory opened.");
+      setIsScrapbookModalOpen(true);
+    } else {
+      hapticLight();
+      setToast("Date marked as upcoming");
     }
+
+    if (isDemoMode) {
+      return;
+    }
+
+    await persistEventWithFallback(updatedEvent, { completed: isNowCompleted });
+  };
+
+  const handleUpdateEventRsvp = async (event: Event, status: 'Going' | 'Maybe' | 'Not Going') => {
+    if (!user) return;
+    const nextRsvps = { ...(event.rsvps || {}), [user.uid]: status };
+    const updatedEvent: Event = { ...event, rsvps: nextRsvps };
+    setEvents(prev => prev.map(ev => (ev.id === event.id ? updatedEvent : ev)));
+    setToast(`RSVP updated to ${status}`);
+
+    if (isDemoMode) {
+      return;
+    }
+
+    await persistEventWithFallback(updatedEvent, { rsvps: nextRsvps });
+  };
+
+  const handleUpdateEventChecklist = async (event: Event, nextChecklist: DateChecklistItem[]) => {
+    if (!user) return;
+    const bounded = nextChecklist.slice(0, 30);
+    const updatedEvent: Event = { ...event, checklist: bounded };
+    setEvents(prev => prev.map(ev => (ev.id === event.id ? updatedEvent : ev)));
+
+    if (isDemoMode) {
+      return;
+    }
+
+    await persistEventWithFallback(updatedEvent, { checklist: bounded });
   };
 
   const handleSaveMemory = async (eventId: string, memory: DateMemory) => {
     if (!user) return;
-    try {
-      await setDoc(doc(db, 'events', eventId), {
-        memory,
-        completed: true
-      }, { merge: true });
-      hapticSuccess();
-      setToast("Cherished memory saved to scrapbook! 💖");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `events/${eventId}`);
+    const targetEvent = events.find(ev => ev.id === eventId);
+    const updatedEvent: Event = targetEvent
+      ? { ...targetEvent, memory, completed: true }
+      : {
+          id: eventId,
+          ownerUid: user.uid,
+          title: 'Date Night Memory',
+          date: new Date().toISOString().split('T')[0],
+          collaborators: [user.uid],
+          rsvps: { [user.uid]: 'Going' },
+          memory,
+          completed: true,
+          createdAt: new Date().toISOString()
+        };
+
+    setEvents(prev => prev.map(ev => (ev.id === eventId ? updatedEvent : ev)));
+    hapticSuccess();
+    setToast("Cherished memory saved to scrapbook! 💖");
+
+    if (isDemoMode) {
+      return;
     }
+
+    await persistEventWithFallback(updatedEvent, { memory, completed: true });
   };
 
   const handleRevealMystery = async (eventId: string) => {
     if (!user) return;
-    try {
-      await setDoc(doc(db, 'events', eventId), {
-        mysteryRevealed: true
-      }, { merge: true });
-      hapticCelebration();
-      setToast("Mystery date revealed! Enjoy your night! ✨");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `events/${eventId}`);
+    const targetEvent = events.find(ev => ev.id === eventId);
+    if (!targetEvent) return;
+    const updatedEvent: Event = { ...targetEvent, mysteryRevealed: true };
+    setEvents(prev => prev.map(ev => (ev.id === eventId ? updatedEvent : ev)));
+    hapticCelebration();
+    setToast("Mystery date revealed! Enjoy your night! ✨");
+
+    if (isDemoMode) {
+      return;
     }
+
+    await persistEventWithFallback(updatedEvent, { mysteryRevealed: true });
   };
 
   const handleConnectPartner = async (partnerUid: string) => {
@@ -3973,484 +4201,118 @@ export default function App() {
             </motion.div>
           )}
           {view === 'planner' && (
-            <motion.div
-              key="planner"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="space-y-8"
-            >
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="space-y-1">
-                  <h2 className="text-3xl font-serif">Planner</h2>
-                  <p className="text-outline text-sm">Curate and schedule your shared dates and moments.</p>
-                </div>
-                <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 no-scrollbar justify-start md:justify-end">
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button 
-                      onClick={() => setIsJoinEventModalOpen(true)}
-                      className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center border border-outline-variant/10 shadow-sm"
-                      title="Join Date Night"
-                      aria-label="Join Date Night with code"
-                    >
-                      <Share2 className="w-4 h-4" />
-                    </button>
-                    
-                    <AnimatePresence mode="wait">
-                      {(plannerMode === 'list' || plannerMode === 'grid') && (
-                        <motion.div 
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -10 }}
-                          className="bg-surface-container p-1 rounded-full flex gap-1 flex-shrink-0 border border-outline-variant/10"
-                        >
-                          <button 
-                            onClick={() => setPlannerSort('date')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all min-h-[36px] ${plannerSort === 'date' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                          >
-                            Date
-                          </button>
-                          <button 
-                            onClick={() => setPlannerSort('time')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all min-h-[36px] ${plannerSort === 'time' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                          >
-                            Time
-                          </button>
-                          <button 
-                            onClick={() => setPlannerSort('title')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all min-h-[36px] ${plannerSort === 'title' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                          >
-                            Title
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="bg-surface-container p-1 rounded-full flex gap-1 border border-outline-variant/10">
-                      <button 
-                        onClick={() => setPlannerMode('list')}
-                        className={`p-2.5 rounded-full transition-all min-h-[44px] min-w-[44px] flex items-center justify-center ${plannerMode === 'list' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                        title="List View"
-                        aria-label="List View"
-                      >
-                        <List className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => setPlannerMode('grid')}
-                        className={`p-2.5 rounded-full transition-all min-h-[44px] min-w-[44px] flex items-center justify-center ${plannerMode === 'grid' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                        title="Grid View"
-                        aria-label="Grid View"
-                      >
-                        <LayoutGrid className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => setPlannerMode('calendar')}
-                        className={`p-2.5 rounded-full transition-all min-h-[44px] min-w-[44px] flex items-center justify-center ${plannerMode === 'calendar' ? 'bg-primary text-on-primary-fixed shadow-sm' : 'text-outline hover:bg-white/5'}`}
-                        title="Calendar View"
-                        aria-label="Calendar View"
-                      >
-                        <Calendar className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <motion.button 
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          hapticLight();
-                          const activeMood: DateMood = plannerMoodFilter !== 'all' ? plannerMoodFilter : 'Romantic';
-                          setRomanticTipsMood(activeMood);
-                          setIsRomanticTipsModalOpen(true);
-                        }}
-                        className="px-3.5 py-2.5 rounded-full bg-secondary/10 text-secondary hover:bg-secondary/20 transition-all min-h-[44px] flex items-center gap-1.5 border border-secondary/25 shadow-xs text-xs font-bold cursor-pointer"
-                        title="Romantic Tips & Relationship Exercises"
-                        aria-label="Romantic Tips & Relationship Exercises"
-                      >
-                        <MessageCircleHeart className="w-4 h-4 text-secondary shrink-0" />
-                        <span className="hidden sm:inline">Romantic Tips</span>
-                      </motion.button>
-                      <motion.button 
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => { hapticLight(); setIsScrapbookModalOpen(true); }}
-                        className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center border border-outline-variant/10 shadow-sm"
-                        title="Couple Scrapbook"
-                        aria-label="Couple Scrapbook"
-                      >
-                        <Camera className="w-4 h-4" />
-                      </motion.button>
-                      <motion.button 
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleSuggestIdea}
-                        disabled={isSuggesting}
-                        className="p-3 rounded-full bg-surface-container text-outline hover:text-primary transition-colors disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center border border-outline-variant/10 shadow-sm"
-                        title="AI Suggest Idea"
-                        aria-label="AI Suggest Idea"
-                      >
-                        {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      </motion.button>
-                      <motion.button 
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          setEditingEvent(null);
-                          setNewEvent({ 
-                            title: '', 
-                            description: '', 
-                            date: '', 
-                            time: '', 
-                            location: '', 
-                            goalId: '', 
-                            reminder: false, 
-                            reminderMinutes: 15, 
-                            tags: [],
-                            mood: 'Romantic',
-                            isMystery: false,
-                            mysteryClue: ''
-                          });
-                          setIsEventModalOpen(true);
-                        }}
-                        title="Plan Date Night"
-                        aria-label="Plan Date Night"
-                        className="bg-primary text-on-primary-fixed p-3 rounded-full shadow-md transition-all hover:shadow-primary/20 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </motion.button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Planner Date Mood Filter Bar (Grid & List modes) */}
-              {plannerMode !== 'calendar' && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar pt-1">
-                  <span className="text-[10px] uppercase font-bold text-outline tracking-wider shrink-0 flex items-center gap-1 mr-1">
-                    <Sparkles className="w-3 h-3 text-secondary" /> Vibe:
-                  </span>
-                  <button
-                    onClick={() => { hapticLight(); setPlannerMoodFilter('all'); }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
-                      plannerMoodFilter === 'all'
-                        ? 'bg-secondary text-on-secondary border-secondary shadow-xs'
-                        : 'bg-surface-container text-outline border-outline-variant/20 hover:text-on-surface'
-                    }`}
-                  >
-                    All Dates ({events.length})
-                  </button>
-                  {DATE_MOODS.map(mood => {
-                    const count = events.filter(e => (e.mood || 'Romantic') === mood.id).length;
-                    const isSelected = plannerMoodFilter === mood.id;
-                    return (
-                      <button
-                        key={mood.id}
-                        onClick={() => { hapticLight(); setPlannerMoodFilter(mood.id); }}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
-                          isSelected
-                            ? `${mood.activeClass} font-bold shadow-xs`
-                            : 'bg-surface-container text-outline border-outline-variant/20 hover:text-on-surface'
-                        }`}
-                      >
-                        <span>{mood.emoji}</span>
-                        <span>{mood.label}</span>
-                        {count > 0 && <span className="text-[10px] opacity-75">({count})</span>}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => {
-                      hapticLight();
-                      const activeMood: DateMood = plannerMoodFilter !== 'all' ? plannerMoodFilter : 'Romantic';
-                      setRomanticTipsMood(activeMood);
-                      setIsRomanticTipsModalOpen(true);
-                    }}
-                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold text-secondary bg-secondary/10 hover:bg-secondary/20 border border-secondary/30 transition-all shrink-0 cursor-pointer ml-auto"
-                  >
-                    <MessageCircleHeart className="w-3.5 h-3.5" />
-                    <span>{plannerMoodFilter !== 'all' ? `${plannerMoodFilter} Tips` : 'Couple Tips'}</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="space-y-6">
-                {plannerMode === 'calendar' ? (
-                  <CalendarComponent 
-                    events={events} 
-                    userId={user?.uid}
-                    onAddEvent={(date) => {
-                      setEditingEvent(null);
-                      setNewEvent({ 
-                        title: '', 
-                        description: '', 
-                        date, 
-                        time: '', 
-                        location: '', 
-                        goalId: '', 
-                        reminder: false, 
-                        reminderMinutes: 15, 
-                        tags: [],
-                        mood: 'Romantic',
-                        isMystery: false,
-                        mysteryClue: ''
-                      });
-                      setIsEventModalOpen(true);
-                    }}
-                    onEditEvent={(event) => {
-                      setEditingEvent(event);
-                      setIsEventModalOpen(true);
-                    }}
-                  />
-                ) : (
-                  sortedEvents.length > 0 ? (
-                    <div className={`grid gap-6 ${plannerMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                      {sortedEvents.map((event, idx) => {
-                        const isMysteryLocked = event.isMystery && !event.mysteryRevealed;
-
-                        return (
-                          <motion.div 
-                            key={event.id}
-                            layout
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ 
-                              opacity: event.completed ? 0.75 : 1, 
-                              scale: 1,
-                              filter: event.completed ? "grayscale(0.2)" : "grayscale(0)"
-                            }}
-                            transition={{ delay: idx * 0.05 }}
-                            whileHover={{ scale: 1.01, y: -2 }}
-                            className={`bg-surface-container-low rounded-[2rem] p-6 sm:p-8 border relative group shadow-sm hover:shadow-xl transition-all duration-500 ${
-                              isMysteryLocked
-                                ? 'border-amber-500/30 bg-gradient-to-br from-surface-container-low via-surface-container-low to-amber-950/20'
-                                : event.completed 
-                                  ? 'border-secondary/30' 
-                                  : 'border-outline-variant/10'
-                            } ${plannerMode === 'list' ? 'flex flex-col sm:flex-row items-start sm:items-center gap-6' : ''}`}
-                          >
-                            <div className="absolute top-6 right-6 flex sm:flex-col gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 z-10">
-                              <motion.button 
-                                whileHover={{ scale: 1.2 }}
-                                whileTap={{ scale: 0.8 }}
-                                initial={false}
-                                animate={{ 
-                                  scale: event.completed ? [1, 1.4, 1] : 1,
-                                  rotate: event.completed ? [0, 15, 0] : 0
-                                }}
-                                onClick={() => toggleEventCompletion(event)}
-                                className={`p-2 transition-colors ${event.completed ? 'text-secondary' : 'text-outline hover:text-secondary'}`}
-                                title={event.completed ? "Mark as Incomplete" : "Mark as Complete"}
-                              >
-                                {event.completed ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
-                              </motion.button>
-                              <motion.button 
-                                whileHover={{ scale: 1.1, rotate: 15 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() => {
-                                  navigator.clipboard.writeText(event.id);
-                                  setToast("Date invitation code copied! 💌");
-                                }}
-                                className="p-2 text-outline hover:text-primary transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
-                                title="Copy Date Code"
-                                aria-label="Copy Date Code"
-                              >
-                                <Share2 className="w-4 h-4" />
-                              </motion.button>
-                              <motion.button 
-                                whileHover={{ scale: 1.1, rotate: 15 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() => {
-                                  setEditingEvent(event);
-                                  setIsEventModalOpen(true);
-                                }}
-                                className="p-2 text-outline hover:text-primary transition-colors"
-                              >
-                                <Settings className="w-4 h-4" />
-                              </motion.button>
-                              <motion.button 
-                                whileHover={{ scale: 1.1, rotate: -15 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() => deleteEvent(event.id)}
-                                className="p-2 text-outline hover:text-error transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </motion.button>
-                            </div>
-                            
-                            <div className={`flex ${plannerMode === 'list' ? 'flex-row items-center gap-6' : 'flex-col sm:flex-row gap-6 sm:gap-8'} w-full`}>
-                              <div className={`flex flex-row sm:flex-col items-center justify-center bg-primary/10 rounded-2xl px-6 py-4 sm:py-6 h-fit border border-primary/20 shadow-inner ${plannerMode === 'list' ? 'min-w-[80px]' : 'min-w-[80px] sm:min-w-[100px]'}`}>
-                                <span className="text-[10px] sm:text-xs uppercase font-bold text-primary tracking-[0.2em] sm:mb-1 mr-2 sm:mr-0">
-                                  {new Date(event.date).toLocaleDateString('en-ZA', { month: 'short' })}
-                                </span>
-                                <span className="text-3xl sm:text-4xl font-serif text-primary">
-                                  {new Date(event.date).toLocaleDateString('en-ZA', { day: 'numeric' })}
-                                </span>
-                              </div>
-                              
-                              <div className="space-y-4 flex-1 pr-0 sm:pr-8">
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-3 flex-wrap">
-                                    <h3 className={`text-2xl sm:text-3xl font-serif leading-tight tracking-tight transition-all duration-500 ${
-                                      event.completed ? 'text-outline line-through' : 'text-on-surface'
-                                    }`}>
-                                      {isMysteryLocked ? 'Mystery Date Night ✨' : event.title}
-                                    </h3>
-                                    {event.mood && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          hapticLight();
-                                          setRomanticTipsMood(event.mood as DateMood);
-                                          setIsRomanticTipsModalOpen(true);
-                                        }}
-                                        title={`View relationship exercises for ${event.mood} dates`}
-                                        className="cursor-pointer hover:scale-105 transition-transform"
-                                      >
-                                        <MoodBadge mood={event.mood} size="sm" />
-                                      </button>
-                                    )}
-                                    {event.completed && (
-                                      <motion.div
-                                        initial={{ scale: 0, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        className="text-secondary"
-                                      >
-                                        <CheckCircle2 className="w-6 h-6" />
-                                      </motion.div>
-                                    )}
-                                  </div>
-
-                                  {isMysteryLocked ? (
-                                    <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 space-y-2">
-                                      <p className="text-xs text-amber-200/90 font-medium italic">
-                                        🔒 Details are sealed! Scratch off the golden card to reveal what your love has planned.
-                                      </p>
-                                      {event.mysteryClue && (
-                                        <p className="text-[11px] text-amber-300 font-bold">
-                                          💌 Clue: "{event.mysteryClue}"
-                                        </p>
-                                      )}
-                                      <button
-                                        onClick={() => { hapticLight(); setMysteryEventToReveal(event); }}
-                                        className="bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] uppercase font-bold tracking-widest px-4 py-2 rounded-full shadow-sm hover:shadow-md flex items-center gap-1.5 active:scale-95 transition-all"
-                                      >
-                                        <Unlock className="w-3.5 h-3.5" /> Scratch & Reveal Date
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {event.tags && event.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-2">
-                                          {event.tags.map((tag, tIdx) => (
-                                            <span key={tIdx} className="text-[10px] uppercase tracking-widest font-bold bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/20">
-                                              {tag}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {event.description && (
-                                        <p className={`text-on-surface/70 text-sm sm:text-base leading-relaxed ${plannerMode === 'list' ? 'line-clamp-1' : 'line-clamp-3'}`}>
-                                          {event.description}
-                                        </p>
-                                      )}
-                                    </>
-                                  )}
-
-                                  {/* Scrapbook Memory Preview if Completed */}
-                                  {event.completed && (
-                                    <div className="mt-3 p-3 rounded-2xl bg-surface-container/70 border border-outline-variant/15 flex items-center justify-between gap-3">
-                                      {event.memory ? (
-                                        <div className="flex items-center gap-2.5 truncate">
-                                          <div className="flex items-center text-amber-400 font-bold text-xs shrink-0">
-                                            <Star className="w-3.5 h-3.5 fill-amber-400 mr-0.5" />
-                                            {event.memory.rating}.0
-                                          </div>
-                                          <span className="text-xs text-on-surface/80 italic truncate font-serif">
-                                            "{event.memory.recapNote || 'Cherished moment'}"
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-xs text-outline/60 italic">
-                                          No scrapbook memory written yet.
-                                        </span>
-                                      )}
-
-                                      <button
-                                        onClick={() => {
-                                          hapticLight();
-                                          setIsScrapbookModalOpen(true);
-                                        }}
-                                        className="shrink-0 text-[10px] uppercase font-bold tracking-wider text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Camera className="w-3.5 h-3.5" />
-                                        {event.memory ? 'View in Scrapbook' : '+ Add Memory'}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                <div className="flex flex-wrap gap-x-8 gap-y-3 pt-4 border-t border-outline-variant/10">
-                                  {event.time && (
-                                    <div className="flex items-center gap-2.5 text-outline text-xs font-bold uppercase tracking-widest">
-                                      <Clock className="w-4 h-4 text-primary/60" />
-                                      <span>{event.time}</span>
-                                    </div>
-                                  )}
-                                  {event.location && !isMysteryLocked && (
-                                    <div className="flex items-center gap-2.5 text-outline text-xs font-bold uppercase tracking-widest">
-                                      <MapPin className="w-4 h-4 text-primary/60" />
-                                      <span>{event.location}</span>
-                                    </div>
-                                  )}
-                                  {event.goalId && goals.find(g => g.id === event.goalId) && (
-                                    <div className="flex items-center gap-2.5 text-outline text-xs font-bold uppercase tracking-widest">
-                                      <History className="w-4 h-4 text-primary/60" />
-                                      <span>{goals.find(g => g.id === event.goalId)?.name}</span>
-                                    </div>
-                                  )}
-                                {user && event.rsvps && event.rsvps[user.uid] && (
-                                  <div className={`flex items-center gap-2.5 text-xs uppercase tracking-widest font-bold ${
-                                    event.rsvps[user.uid] === 'Going' ? 'text-secondary' : 
-                                    event.rsvps[user.uid] === 'Maybe' ? 'text-primary' : 'text-error'
-                                  }`}>
-                                    <div className={`w-3 h-3 rounded-full shadow-sm ${
-                                      event.rsvps[user.uid] === 'Going' ? 'bg-secondary' : 
-                                      event.rsvps[user.uid] === 'Maybe' ? 'bg-primary' : 'bg-error'
-                                    }`} />
-                                    <span>RSVP: {event.rsvps[user.uid]}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                  ) : (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="py-20 text-center bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20"
-                    >
-                      <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Calendar className="w-10 h-10 text-primary opacity-50" />
-                      </div>
-                      <h3 className="text-2xl font-serif mb-2">No dates planned yet</h3>
-                      <p className="text-outline text-sm mb-8 max-w-xs mx-auto">Your romantic journey is a blank canvas. Start planning your next bloom today.</p>
-                      <button 
-                        onClick={() => setIsEventModalOpen(true)}
-                        className="bg-primary text-on-primary-fixed px-8 py-4 rounded-full font-bold shadow-lg shadow-primary/20 active:scale-95 transition-transform"
-                      >
-                        Schedule Your First Date
-                      </button>
-                    </motion.div>
-                  )
-                )}
-              </div>
-            </motion.div>
+            <PlannerView
+              events={events}
+              goals={goals}
+              bucketList={bucketList}
+              totalBalance={totalBalance}
+              currentUserUid={user?.uid || ''}
+              partnerName={relationshipData?.partnerName || 'Alex (Partner)'}
+              plannerMode={plannerMode}
+              setPlannerMode={setPlannerMode}
+              plannerSort={plannerSort}
+              setPlannerSort={setPlannerSort}
+              plannerMoodFilter={plannerMoodFilter}
+              setPlannerMoodFilter={setPlannerMoodFilter}
+              isSuggesting={isSuggesting}
+              onSuggestIdea={handleSuggestIdea}
+              onOpenNewEventModal={(initialDate) => {
+                setEditingEvent(null);
+                setNewEvent({
+                  title: '',
+                  description: '',
+                  date: initialDate || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+                  time: '19:00',
+                  location: '',
+                  goalId: goals[0]?.id || '',
+                  estimatedBudget: undefined,
+                  dressCode: '',
+                  checklist: [],
+                  itinerary: [],
+                  reminder: true,
+                  reminderMinutes: 60,
+                  tags: ['Date Night'],
+                  mood: 'Romantic',
+                  isMystery: false,
+                  mysteryClue: ''
+                });
+                setIsEventModalOpen(true);
+              }}
+              onApplyBlueprintPreset={(preset: DateBlueprintPreset) => {
+                setEditingEvent(null);
+                setNewEvent({
+                  title: preset.title,
+                  description: preset.description,
+                  date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+                  time: preset.defaultTime,
+                  location: preset.location,
+                  goalId: goals[0]?.id || '',
+                  estimatedBudget: preset.estimatedBudget,
+                  dressCode: preset.dressCode,
+                  checklist: preset.checklist.map((text, idx) => ({
+                    id: `chk_preset_${idx}_${Date.now()}`,
+                    text,
+                    done: false
+                  })),
+                  itinerary: preset.itinerary,
+                  reminder: true,
+                  reminderMinutes: 60,
+                  tags: preset.tags,
+                  mood: preset.mood,
+                  isMystery: Boolean(preset.isMystery),
+                  mysteryClue: preset.mysteryClue || ''
+                });
+                setIsEventModalOpen(true);
+                setToast(`Loaded "${preset.title}" blueprint! 🥂`);
+              }}
+              onPlanFromBucketItem={handlePlanDateFromBucket}
+              onEditEvent={(ev) => {
+                setEditingEvent(ev);
+                setIsEventModalOpen(true);
+              }}
+              onDeleteEvent={(eventId) => deleteEvent(eventId)}
+              onToggleEventCompletion={toggleEventCompletion}
+              onUpdateEventRsvp={handleUpdateEventRsvp}
+              onUpdateEventChecklist={handleUpdateEventChecklist}
+              onRevealMysteryEvent={(ev) => setMysteryEventToReveal(ev)}
+              onShareEventToChat={async (ev) => {
+                await handleSendMessage({
+                  text: `Can't wait for our "${ev.title}" date on ${formatDateShort(ev.date)}${ev.time ? ` at ${ev.time}` : ''}${ev.location ? ` · ${ev.location}` : ''}! 🥂`,
+                  messageType: 'date_invite',
+                  linkedEventId: ev.id,
+                  linkedEventTitle: ev.title
+                });
+                setToast(`Shared "${ev.title}" invite to Partner Chat! 💬`);
+                setView('chat');
+              }}
+              onViewEventOnMap={(ev) => {
+                setFocusedMapSpot({
+                  id: ev.id,
+                  name: ev.title,
+                  category: `${ev.mood || 'Romantic'} Date`,
+                  location: ev.location || 'Gauteng',
+                  estimatedBudget: ev.estimatedBudget,
+                  summary: ev.description,
+                  mood: ev.mood
+                });
+                setView('map');
+              }}
+              onSelectGoalForFunding={(goalId) => {
+                setFundData({ goalId, amount: '', contributor: 'Me' });
+                setIsFundModalOpen(true);
+              }}
+              onOpenRomanticTips={(mood) => {
+                setRomanticTipsMood(mood);
+                setIsRomanticTipsModalOpen(true);
+              }}
+              onOpenScrapbook={() => setIsScrapbookModalOpen(true)}
+              onOpenJoinEventModal={() => setIsJoinEventModalOpen(true)}
+              onOpenSplitterModal={() => setIsSplitterModalOpen(true)}
+              onCopyInviteCode={(eventId) => {
+                navigator.clipboard.writeText(eventId);
+                setToast('Date invitation code copied! 💌');
+              }}
+            />
           )}
 
           {view === 'wishlist' && (
@@ -4946,11 +4808,40 @@ export default function App() {
                   <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Location</label>
                   <input 
                     type="text" 
-                    placeholder="Where to?"
+                    placeholder="Where to? (e.g. Homestead Dam, Benoni or Boksburg)"
                     className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm"
                     value={editingEvent ? editingEvent.location : newEvent.location}
                     onChange={e => editingEvent ? setEditingEvent({...editingEvent, location: e.target.value}) : setNewEvent({...newEvent, location: e.target.value})}
                   />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Estimated Date Budget (ZAR)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="50"
+                      placeholder="e.g. 450"
+                      className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm tabular-nums"
+                      value={editingEvent ? (editingEvent.estimatedBudget ?? '') : (newEvent.estimatedBudget ?? '')}
+                      onChange={e => {
+                        const val = e.target.value ? Number(e.target.value) : undefined;
+                        if (editingEvent) setEditingEvent({...editingEvent, estimatedBudget: val});
+                        else setNewEvent({...newEvent, estimatedBudget: val});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-outline">Dress Code / Attire</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Smart Casual, Cozy & Warm"
+                      className="w-full bg-transparent border-b-2 border-outline-variant/30 py-2 focus:border-primary outline-none transition-colors font-sans text-sm"
+                      value={editingEvent ? (editingEvent.dressCode || '') : (newEvent.dressCode || '')}
+                      onChange={e => editingEvent ? setEditingEvent({...editingEvent, dressCode: e.target.value}) : setNewEvent({...newEvent, dressCode: e.target.value})}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1">

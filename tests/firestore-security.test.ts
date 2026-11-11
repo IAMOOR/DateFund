@@ -60,6 +60,9 @@ describe('Firestore Security & Document Integrity', () => {
           ownerUid: 'attacker_123',
           title: 'Dinner',
           date: '2026-03-01',
+          estimatedBudget: 680,
+          dressCode: 'Smart Casual',
+          checklist: [{ id: 'chk_1', text: 'Book table', done: true }],
           collaborators: ['attacker_123'],
           createdAt: '2026-03-01'
         })
@@ -68,6 +71,9 @@ describe('Firestore Security & Document Integrity', () => {
       const result = mapEventDoc(mockSnap);
       expect(result.id).toBe('canonical_event_real_456');
       expect(result.id).not.toBe('victim_event_target');
+      expect(result.estimatedBudget).toBe(680);
+      expect(result.dressCode).toBe('Smart Casual');
+      expect(result.checklist?.length).toBe(1);
     });
 
     it('prevents stored id fields from hijacking bucket list item ID', () => {
