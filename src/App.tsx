@@ -132,6 +132,7 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
+  writeBatch,
   deleteField,
   updateDoc,
   increment,
@@ -707,17 +708,25 @@ export default function App() {
           return [...prev, ...newReminders];
         });
         
-        // Mark as sent in Firestore to avoid repeat notifications
-        upcoming.forEach(async (event) => {
-          try {
-            await setDoc(doc(db, 'events', event.id), {
-              ...event,
-              reminderSent: true
-            }, { merge: true });
-          } catch (err) {
-            console.error("Failed to update reminder status", err);
+        // Mark as sent in Firestore to avoid repeat notifications using batched writes
+        (async () => {
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < upcoming.length; i += BATCH_SIZE) {
+            const chunk = upcoming.slice(i, i + BATCH_SIZE);
+            const batch = writeBatch(db);
+            chunk.forEach(event => {
+              batch.set(doc(db, 'events', event.id), {
+                ...event,
+                reminderSent: true
+              }, { merge: true });
+            });
+            try {
+              await batch.commit();
+            } catch (err) {
+              console.error("Failed to update reminder status", err);
+            }
           }
-        });
+        })();
 
         // Browser Notification if possible
         if ("Notification" in window && Notification.permission === "granted") {
