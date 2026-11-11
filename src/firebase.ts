@@ -33,13 +33,41 @@ import {
   deleteField,
   increment 
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import rawFirebaseConfig from '../firebase-applet-config.json';
+
+// Safely retrieve environment variables across Vite frontend and Node/test environments
+const getEnvVar = (key: string): string | undefined => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key];
+  }
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
+  }
+  return undefined;
+};
+
+// Build Firebase configuration using environment variables with fallback to config file
+export const firebaseConfig = {
+  ...rawFirebaseConfig,
+  apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || rawFirebaseConfig.apiKey || '',
+  authDomain: getEnvVar('VITE_FIREBASE_AUTH_DOMAIN') || rawFirebaseConfig.authDomain,
+  projectId: getEnvVar('VITE_FIREBASE_PROJECT_ID') || rawFirebaseConfig.projectId,
+  storageBucket: getEnvVar('VITE_FIREBASE_STORAGE_BUCKET') || rawFirebaseConfig.storageBucket,
+  messagingSenderId: getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID') || rawFirebaseConfig.messagingSenderId,
+  appId: getEnvVar('VITE_FIREBASE_APP_ID') || rawFirebaseConfig.appId,
+  firestoreDatabaseId: getEnvVar('VITE_FIREBASE_FIRESTORE_DATABASE_ID') || (rawFirebaseConfig as any).firestoreDatabaseId,
+};
 
 // Initialize Firebase
 if (!firebaseConfig || !firebaseConfig.apiKey) {
-  console.error("Firebase configuration is missing or invalid! Check firebase-applet-config.json");
+  console.error("Firebase configuration is missing or invalid! Please set VITE_FIREBASE_API_KEY in your environment.");
 }
-const app = initializeApp(firebaseConfig);
+// Use a placeholder key if none is provided in development/test so initializeApp/getAuth don't throw immediately
+const initConfig = {
+  ...firebaseConfig,
+  apiKey: firebaseConfig.apiKey || 'placeholder-api-key',
+};
+const app = initializeApp(initConfig);
 export const auth = getAuth(app);
 
 // Enable offline persistence cache for mobile & web offline resilience
