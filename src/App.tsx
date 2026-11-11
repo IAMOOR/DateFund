@@ -62,7 +62,8 @@ import {
   deleteDoc, 
   handleFirestoreError, 
   OperationType,
-  User
+  User,
+  writeBatch
 } from './firebase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -305,15 +306,17 @@ export default function App() {
         });
         
         // Mark as sent in Firestore to avoid repeat notifications
-        upcoming.forEach(async (event) => {
-          try {
-            await setDoc(doc(db, 'events', event.id), {
-              ...event,
-              reminderSent: true
-            }, { merge: true });
-          } catch (err) {
-            console.error("Failed to update reminder status", err);
-          }
+        const batch = writeBatch(db);
+        upcoming.forEach((event) => {
+          const eventRef = doc(db, 'events', event.id);
+          batch.set(eventRef, {
+            ...event,
+            reminderSent: true
+          }, { merge: true });
+        });
+
+        batch.commit().catch(err => {
+          console.error("Failed to update reminder status batch", err);
         });
 
         // Browser Notification if possible
@@ -350,16 +353,20 @@ export default function App() {
     // Migration: Ensure all owned goals have collaborators list
     const fixOldData = async () => {
       try {
+        const batch = writeBatch(db);
+        let hasChanges = false;
+
         // Fix Goals
         const qGoals = query(collection(db, 'goals'), where('ownerUid', '==', user.uid));
         const snapGoals = await getDocs(qGoals);
         for (const docSnap of snapGoals.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'goals', docSnap.id), {
+            batch.set(doc(db, 'goals', docSnap.id), {
               ...data,
               collaborators: [user.uid]
             }, { merge: true });
+            hasChanges = true;
           }
         }
 
@@ -369,12 +376,17 @@ export default function App() {
         for (const docSnap of snapEvents.docs) {
           const data = docSnap.data();
           if (!data.collaborators) {
-            await setDoc(doc(db, 'events', docSnap.id), {
+            batch.set(doc(db, 'events', docSnap.id), {
               ...data,
               collaborators: [user.uid],
               rsvps: { [user.uid]: 'Going' }
             }, { merge: true });
+            hasChanges = true;
           }
+        }
+
+        if (hasChanges) {
+          await batch.commit();
         }
       } catch (err) {
         // Silent fail for migration
@@ -649,14 +661,16 @@ export default function App() {
   const finalizeBreakUp = async () => {
     if (!user) return;
     try {
+      const batch = writeBatch(db);
       const sharedGoals = goals.filter(g => g.collaborators.length > 1);
       for (const goal of sharedGoals) {
         const goalTransactions = transactions.filter(t => t.goalId === goal.id);
         for (const t of goalTransactions) {
-          await deleteDoc(doc(db, 'transactions', t.id));
+          batch.delete(doc(db, 'transactions', t.id));
         }
-        await deleteDoc(doc(db, 'goals', goal.id));
+        batch.delete(doc(db, 'goals', goal.id));
       }
+      await batch.commit();
       setToast("Relationship ended. Funds split and shared dreams archived.");
       setIsBreakUpSummaryOpen(false);
     } catch (err) {
